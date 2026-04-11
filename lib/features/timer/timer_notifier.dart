@@ -6,31 +6,44 @@ import '../../core/models/session.dart' as models;
 
 class TimerState {
   final bool isRunning;
+  final bool isPaused;
   final String? activeSessionId;
-  final DateTime? startedAt;
-  final Duration elapsed;
+  final DateTime? segmentStartedAt; // début du segment actif courant
+  final Duration elapsed;           // temps du segment courant
+  final Duration accumulated;       // temps travaillé avant le segment courant
   final String? selectedProjectId;
 
   const TimerState({
     this.isRunning = false,
+    this.isPaused = false,
     this.activeSessionId,
-    this.startedAt,
+    this.segmentStartedAt,
     this.elapsed = Duration.zero,
+    this.accumulated = Duration.zero,
     this.selectedProjectId,
   });
 
+  /// Temps total travaillé (cumulé + segment courant)
+  Duration get totalWorked => accumulated + elapsed;
+
+  /// Actif = en cours ou en pause (session ouverte)
+  bool get isActive => isRunning || isPaused;
+
   TimerState copyWith({
     bool? isRunning,
-    String? activeSessionId,
-    DateTime? startedAt,
+    bool? isPaused,
     Duration? elapsed,
+    Duration? accumulated,
     String? selectedProjectId,
+    // nullable fields handled below
   }) =>
       TimerState(
         isRunning: isRunning ?? this.isRunning,
-        activeSessionId: activeSessionId ?? this.activeSessionId,
-        startedAt: startedAt ?? this.startedAt,
+        isPaused: isPaused ?? this.isPaused,
+        activeSessionId: activeSessionId,
+        segmentStartedAt: segmentStartedAt,
         elapsed: elapsed ?? this.elapsed,
+        accumulated: accumulated ?? this.accumulated,
         selectedProjectId: selectedProjectId ?? this.selectedProjectId,
       );
 }
@@ -42,12 +55,12 @@ class TimerNotifier extends StateNotifier<TimerState> {
   TimerNotifier(this._supabase) : super(const TimerState());
 
   void selectProject(String projectId) {
-    state = state.copyWith(selectedProjectId: projectId);
+    if (state.isActive) return; // pas de changement en cours de session
+    state = TimerState(selectedProjectId: projectId);
   }
 
   Future<void> start() async {
-    if (state.isRunning || state.selectedProjectId == null) return;
-
+    if (state.isActive || state.selectedProjectId == null) return;
     final user = _supabase.auth.currentUser;
     if (user == null) return;
 
@@ -61,27 +74,52 @@ class TimerNotifier extends StateNotifier<TimerState> {
       'started_at': now.toIso8601String(),
     });
 
-    state = state.copyWith(
+    state = TimerState(
       isRunning: true,
       activeSessionId: sessionId,
-      startedAt: now,
-      elapsed: Duration.zero,
+      segmentStartedAt: now,
+      selectedProjectId: state.selectedProjectId,
     );
 
-    _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
-      final elapsed = DateTime.now().toUtc().difference(state.startedAt!);
-      state = state.copyWith(elapsed: elapsed);
-    });
+    _startTicker();
   }
 
-  Future<models.WorkSession?> stop() async {
-    if (!state.isRunning || state.activeSessionId == null) return null;
+  void pause() {
+    if (!state.isRunning) return;
+    _ticker?.cancel();
+    _ticker = null;
+    state = TimerState(
+      isPaused: true,
+      activeSessionId: state.activeSessionId,
+      accumulated: state.accumulated + state.elapsed,
+      selectedProjectId: state.selectedProjectId,
+    );
+  }
+
+  void resume() {
+    if (!state.isPaused) return;
+    final now = DateTime.now().toUtc();
+    state = TimerState(
+      isRunning: true,
+      activeSessionId: state.activeSessionId,
+      segmentStartedAt: now,
+      accumulated: state.accumulated,
+      selectedProjectId: state.selectedProjectId,
+    );
+    _startTicker();
+  }
+
+  /// Retourne la session enregistrée + le nombre de secondes travaillées.
+  Future<(models.WorkSession?, int)> stop() async {
+    if (!state.isActive || state.activeSessionId == null) return (null, 0);
 
     _ticker?.cancel();
     _ticker = null;
 
     final now = DateTime.now().toUtc();
-    final durationMinutes = state.elapsed.inMinutes;
+    final totalWorked = state.accumulated + state.elapsed;
+    final totalSecs = totalWorked.inSeconds;
+    final durationMinutes = (totalSecs / 60.0).round();
 
     final data = await _supabase
         .from('sessions')
@@ -93,14 +131,19 @@ class TimerNotifier extends StateNotifier<TimerState> {
         .select()
         .single();
 
-    state = state.copyWith(
-      isRunning: false,
-      activeSessionId: null,
-      startedAt: null,
-      elapsed: Duration.zero,
-    );
+    final projectId = state.selectedProjectId;
+    state = TimerState(selectedProjectId: projectId);
 
-    return models.WorkSession.fromJson(data);
+    return (models.WorkSession.fromJson(data), totalSecs);
+  }
+
+  void _startTicker() {
+    _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (state.segmentStartedAt == null) return;
+      final elapsed =
+          DateTime.now().toUtc().difference(state.segmentStartedAt!);
+      state = state.copyWith(elapsed: elapsed);
+    });
   }
 
   @override

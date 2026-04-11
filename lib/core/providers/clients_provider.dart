@@ -5,10 +5,7 @@ import 'supabase_provider.dart';
 class ClientsNotifier extends AsyncNotifier<List<Client>> {
   Future<List<Client>> _fetch() async {
     final supabase = ref.read(supabaseClientProvider);
-    final data = await supabase
-        .from('clients')
-        .select()
-        .order('name');
+    final data = await supabase.from('clients').select().order('name');
     return (data as List).map((e) => Client.fromJson(e)).toList();
   }
 
@@ -17,8 +14,12 @@ class ClientsNotifier extends AsyncNotifier<List<Client>> {
 
   Future<void> create({
     required String name,
+    String? firstName,
+    String? company,
     String? siret,
     String? address,
+    String? phone,
+    String? whatsapp,
     String? email,
   }) async {
     state = const AsyncLoading();
@@ -28,8 +29,12 @@ class ClientsNotifier extends AsyncNotifier<List<Client>> {
       await supabase.from('clients').insert({
         'user_id': userId,
         'name': name,
+        if (firstName != null && firstName.isNotEmpty) 'first_name': firstName,
+        if (company != null && company.isNotEmpty) 'company': company,
         if (siret != null && siret.isNotEmpty) 'siret': siret,
         if (address != null && address.isNotEmpty) 'address': address,
+        if (phone != null && phone.isNotEmpty) 'phone': phone,
+        if (whatsapp != null && whatsapp.isNotEmpty) 'whatsapp': whatsapp,
         if (email != null && email.isNotEmpty) 'email': email,
       });
       return _fetch();
@@ -39,8 +44,12 @@ class ClientsNotifier extends AsyncNotifier<List<Client>> {
   Future<void> edit({
     required String id,
     required String name,
+    String? firstName,
+    String? company,
     String? siret,
     String? address,
+    String? phone,
+    String? whatsapp,
     String? email,
   }) async {
     state = const AsyncLoading();
@@ -48,8 +57,12 @@ class ClientsNotifier extends AsyncNotifier<List<Client>> {
     state = await AsyncValue.guard(() async {
       await supabase.from('clients').update({
         'name': name,
+        'first_name': (firstName?.isNotEmpty ?? false) ? firstName : null,
+        'company': (company?.isNotEmpty ?? false) ? company : null,
         'siret': (siret?.isNotEmpty ?? false) ? siret : null,
         'address': (address?.isNotEmpty ?? false) ? address : null,
+        'phone': (phone?.isNotEmpty ?? false) ? phone : null,
+        'whatsapp': (whatsapp?.isNotEmpty ?? false) ? whatsapp : null,
         'email': (email?.isNotEmpty ?? false) ? email : null,
       }).eq('id', id);
       return _fetch();

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../core/models/client.dart';
 import '../../core/providers/clients_provider.dart';
 
@@ -20,9 +21,8 @@ class _ClientsScreenState extends ConsumerState<ClientsScreen> {
   @override
   void initState() {
     super.initState();
-    _searchCtrl.addListener(() {
-      setState(() => _query = _searchCtrl.text.toLowerCase());
-    });
+    _searchCtrl.addListener(
+        () => setState(() => _query = _searchCtrl.text.toLowerCase()));
   }
 
   @override
@@ -46,7 +46,7 @@ class _ClientsScreenState extends ConsumerState<ClientsScreen> {
       builder: (ctx) => AlertDialog(
         title: const Text('Supprimer ce client ?'),
         content: Text(
-          '${client.name} sera supprimé ainsi que tous ses projets et sessions.',
+          '${client.displayName} sera supprimé ainsi que tous ses projets et sessions.',
         ),
         actions: [
           TextButton(
@@ -104,19 +104,18 @@ class _ClientsScreenState extends ConsumerState<ClientsScreen> {
             return _EmptyState(onAdd: () => _openForm(context, null));
           }
 
-          // Filtre recherche
           final filtered = _query.isEmpty
               ? clients
               : clients
-                  .where((c) => c.name.toLowerCase().contains(_query))
+                  .where((c) =>
+                      c.displayName.toLowerCase().contains(_query) ||
+                      (c.company?.toLowerCase().contains(_query) ?? false))
                   .toList();
 
           return Column(
             children: [
-              // ── SearchBar ───────────────────────────────────────────────
               Padding(
-                padding:
-                    const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
                 child: TextField(
                   controller: _searchCtrl,
                   decoration: InputDecoration(
@@ -125,9 +124,7 @@ class _ClientsScreenState extends ConsumerState<ClientsScreen> {
                     suffixIcon: _query.isNotEmpty
                         ? IconButton(
                             icon: const Icon(Icons.close, size: 18),
-                            onPressed: () {
-                              _searchCtrl.clear();
-                            },
+                            onPressed: () => _searchCtrl.clear(),
                           )
                         : null,
                     isDense: true,
@@ -143,14 +140,13 @@ class _ClientsScreenState extends ConsumerState<ClientsScreen> {
                 ),
               ),
               const SizedBox(height: 4),
-
-              // ── Liste ───────────────────────────────────────────────────
               Expanded(
                 child: filtered.isEmpty
                     ? Center(
                         child: Text(
                           'Aucun résultat pour "$_query"',
-                          style: const TextStyle(color: Color(0xFF9CA3AF)),
+                          style: const TextStyle(
+                              color: Color(0xFF9CA3AF)),
                         ),
                       )
                     : ListView.separated(
@@ -189,16 +185,18 @@ class _ClientTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final initials = client.name
+    final initials = client.displayName
         .trim()
         .split(' ')
         .take(2)
         .map((w) => w.isEmpty ? '' : w[0].toUpperCase())
         .join();
 
-    final subtitle = client.siret != null
-        ? 'SIRET: ${client.siret}'
-        : client.email ?? client.address ?? '';
+    // Sous-titre : entreprise > téléphone > email > SIRET
+    final subtitle = client.company ??
+        client.phone ??
+        client.email ??
+        (client.siret != null ? 'SIRET: ${client.siret}' : '');
 
     return Card(
       child: InkWell(
@@ -214,7 +212,9 @@ class _ClientTile extends StatelessWidget {
                 child: Text(
                   initials,
                   style: TextStyle(
-                    color: Theme.of(context).colorScheme.onPrimaryContainer,
+                    color: Theme.of(context)
+                        .colorScheme
+                        .onPrimaryContainer,
                     fontWeight: FontWeight.w700,
                     fontSize: 14,
                   ),
@@ -225,7 +225,7 @@ class _ClientTile extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(client.name,
+                    Text(client.displayName,
                         style: const TextStyle(
                             fontWeight: FontWeight.w600, fontSize: 15)),
                     if (subtitle.isNotEmpty) ...[
@@ -241,13 +241,11 @@ class _ClientTile extends StatelessWidget {
                 icon: const Icon(Icons.edit_outlined, size: 20),
                 color: const Color(0xFF6B7280),
                 onPressed: onEdit,
-                tooltip: 'Modifier',
               ),
               IconButton(
                 icon: const Icon(Icons.delete_outline, size: 20),
                 color: const Color(0xFFDC2626),
                 onPressed: onDelete,
-                tooltip: 'Supprimer',
               ),
             ],
           ),
@@ -261,7 +259,6 @@ class _ClientTile extends StatelessWidget {
 
 class _EmptyState extends StatelessWidget {
   final VoidCallback onAdd;
-
   const _EmptyState({required this.onAdd});
 
   @override
@@ -276,7 +273,8 @@ class _EmptyState extends StatelessWidget {
                 size: 64, color: Theme.of(context).colorScheme.primary),
             const SizedBox(height: 16),
             const Text('Aucun client',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+                style:
+                    TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
             const SizedBox(height: 8),
             const Text(
               'Créez votre premier client pour commencer à tracker du temps.',
@@ -296,13 +294,10 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
-// ─── Form bottom sheet ────────────────────────────────────────────────────────
-// UX 1 : seul le Nom est obligatoire.
-// SIRET / adresse / email sont optionnels, dans une section dépliable.
+// ─── Formulaire client enrichi ────────────────────────────────────────────────
 
 class ClientFormSheet extends ConsumerStatefulWidget {
   final Client? existing;
-
   const ClientFormSheet({super.key, this.existing});
 
   @override
@@ -311,9 +306,13 @@ class ClientFormSheet extends ConsumerStatefulWidget {
 
 class _ClientFormSheetState extends ConsumerState<ClientFormSheet> {
   final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _company;
+  late final TextEditingController _firstName;
   late final TextEditingController _name;
-  late final TextEditingController _siret;
   late final TextEditingController _address;
+  late final TextEditingController _siret;
+  late final TextEditingController _phone;
+  late final TextEditingController _whatsapp;
   late final TextEditingController _email;
   bool _saving = false;
   bool _optionalExpanded = false;
@@ -324,51 +323,86 @@ class _ClientFormSheetState extends ConsumerState<ClientFormSheet> {
   void initState() {
     super.initState();
     final c = widget.existing;
+    _company = TextEditingController(text: c?.company ?? '');
+    _firstName = TextEditingController(text: c?.firstName ?? '');
     _name = TextEditingController(text: c?.name ?? '');
-    _siret = TextEditingController(text: c?.siret ?? '');
     _address = TextEditingController(text: c?.address ?? '');
+    _siret = TextEditingController(text: c?.siret ?? '');
+    _phone = TextEditingController(text: c?.phone ?? '');
+    _whatsapp = TextEditingController(text: c?.whatsapp ?? '');
     _email = TextEditingController(text: c?.email ?? '');
-    // Déplie si des champs optionnels sont déjà remplis
-    _optionalExpanded = (c?.siret != null && c!.siret!.isNotEmpty) ||
-        (c?.address != null && c!.address!.isNotEmpty) ||
-        (c?.email != null && c!.email!.isNotEmpty);
+    // Déplie si des champs optionnels sont remplis
+    _optionalExpanded = _isEdit &&
+        (c!.company?.isNotEmpty == true ||
+            c.siret?.isNotEmpty == true ||
+            c.address?.isNotEmpty == true ||
+            c.phone?.isNotEmpty == true ||
+            c.whatsapp?.isNotEmpty == true ||
+            c.email?.isNotEmpty == true);
   }
 
   @override
   void dispose() {
-    _name.dispose();
-    _siret.dispose();
-    _address.dispose();
-    _email.dispose();
+    for (final ctrl in [
+      _company, _firstName, _name, _address, _siret, _phone, _whatsapp, _email
+    ]) {
+      ctrl.dispose();
+    }
     super.dispose();
   }
+
+  String? _nullIfEmpty(String v) => v.trim().isEmpty ? null : v.trim();
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _saving = true);
     try {
       final notifier = ref.read(clientsProvider.notifier);
+      final args = (
+        name: _name.text.trim(),
+        firstName: _nullIfEmpty(_firstName.text),
+        company: _nullIfEmpty(_company.text),
+        siret: _nullIfEmpty(_siret.text),
+        address: _nullIfEmpty(_address.text),
+        phone: _nullIfEmpty(_phone.text),
+        whatsapp: _nullIfEmpty(_whatsapp.text),
+        email: _nullIfEmpty(_email.text),
+      );
       if (_isEdit) {
         await notifier.edit(
           id: widget.existing!.id,
-          name: _name.text.trim(),
-          siret: _siret.text.trim().isEmpty ? null : _siret.text.trim(),
-          address:
-              _address.text.trim().isEmpty ? null : _address.text.trim(),
-          email: _email.text.trim().isEmpty ? null : _email.text.trim(),
+          name: args.name,
+          firstName: args.firstName,
+          company: args.company,
+          siret: args.siret,
+          address: args.address,
+          phone: args.phone,
+          whatsapp: args.whatsapp,
+          email: args.email,
         );
       } else {
         await notifier.create(
-          name: _name.text.trim(),
-          siret: _siret.text.trim().isEmpty ? null : _siret.text.trim(),
-          address:
-              _address.text.trim().isEmpty ? null : _address.text.trim(),
-          email: _email.text.trim().isEmpty ? null : _email.text.trim(),
+          name: args.name,
+          firstName: args.firstName,
+          company: args.company,
+          siret: args.siret,
+          address: args.address,
+          phone: args.phone,
+          whatsapp: args.whatsapp,
+          email: args.email,
         );
       }
       if (mounted) Navigator.pop(context);
     } finally {
       if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _openWhatsApp(String number) async {
+    final clean = number.replaceAll(RegExp(r'[^\d+]'), '');
+    final uri = Uri.parse('https://wa.me/$clean');
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
     }
   }
 
@@ -382,7 +416,6 @@ class _ClientFormSheetState extends ConsumerState<ClientFormSheet> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       padding: EdgeInsets.fromLTRB(24, 24, 24, 24 + bottom),
-      // FIX 1 : scroll si le clavier pousse le contenu vers le haut
       child: SingleChildScrollView(
         child: Form(
           key: _formKey,
@@ -409,25 +442,37 @@ class _ClientFormSheetState extends ConsumerState<ClientFormSheet> {
               ),
               const SizedBox(height: 20),
 
-              // ── Nom (obligatoire) ────────────────────────────────────────
+              // ── Prénom ────────────────────────────────────────────────
+              TextFormField(
+                controller: _firstName,
+                decoration: const InputDecoration(
+                  labelText: 'Prénom',
+                  prefixIcon: Icon(Icons.person_outline),
+                ),
+                textCapitalization: TextCapitalization.words,
+                textInputAction: TextInputAction.next,
+              ),
+              const SizedBox(height: 12),
+
+              // ── Nom * (obligatoire) ───────────────────────────────────
               TextFormField(
                 controller: _name,
                 decoration: const InputDecoration(
                   labelText: 'Nom *',
-                  prefixIcon: Icon(Icons.business_outlined),
+                  prefixIcon: Icon(Icons.person_outline),
                 ),
                 validator: (v) =>
                     (v == null || v.trim().isEmpty) ? 'Champ requis' : null,
-                textInputAction: TextInputAction.next,
                 textCapitalization: TextCapitalization.words,
+                textInputAction: TextInputAction.next,
                 autofocus: !_isEdit,
               ),
               const SizedBox(height: 16),
 
-              // ── Informations optionnelles (dépliables) ───────────────────
+              // ── Section optionnelle dépliable ─────────────────────────
               GestureDetector(
-                onTap: () =>
-                    setState(() => _optionalExpanded = !_optionalExpanded),
+                onTap: () => setState(
+                    () => _optionalExpanded = !_optionalExpanded),
                 child: Row(
                   children: [
                     Icon(
@@ -440,17 +485,43 @@ class _ClientFormSheetState extends ConsumerState<ClientFormSheet> {
                     const SizedBox(width: 6),
                     Text(
                       'Informations complémentaires (optionnel)',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: const Color(0xFF6B7280),
-                            fontWeight: FontWeight.w500,
-                          ),
+                      style:
+                          Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: const Color(0xFF6B7280),
+                                fontWeight: FontWeight.w500,
+                              ),
                     ),
                   ],
                 ),
               ),
+
               if (_optionalExpanded) ...[
+                const SizedBox(height: 14),
+
+                // Entreprise
+                TextFormField(
+                  controller: _company,
+                  decoration: const InputDecoration(
+                    labelText: 'Entreprise',
+                    prefixIcon: Icon(Icons.business_outlined),
+                  ),
+                  textCapitalization: TextCapitalization.words,
+                  textInputAction: TextInputAction.next,
+                ),
                 const SizedBox(height: 12),
-                // SIRET (optionnel, format validé seulement si rempli)
+
+                // Adresse
+                TextFormField(
+                  controller: _address,
+                  decoration: const InputDecoration(
+                    labelText: 'Adresse',
+                    prefixIcon: Icon(Icons.location_on_outlined),
+                  ),
+                  textInputAction: TextInputAction.next,
+                ),
+                const SizedBox(height: 12),
+
+                // SIRET
                 TextFormField(
                   controller: _siret,
                   decoration: const InputDecoration(
@@ -469,15 +540,42 @@ class _ClientFormSheetState extends ConsumerState<ClientFormSheet> {
                   textInputAction: TextInputAction.next,
                 ),
                 const SizedBox(height: 4),
+
+                // Téléphone
                 TextFormField(
-                  controller: _address,
+                  controller: _phone,
                   decoration: const InputDecoration(
-                    labelText: 'Adresse',
-                    prefixIcon: Icon(Icons.location_on_outlined),
+                    labelText: 'Téléphone',
+                    prefixIcon: Icon(Icons.phone_outlined),
                   ),
+                  keyboardType: TextInputType.phone,
                   textInputAction: TextInputAction.next,
                 ),
                 const SizedBox(height: 12),
+
+                // WhatsApp
+                TextFormField(
+                  controller: _whatsapp,
+                  decoration: InputDecoration(
+                    labelText: 'WhatsApp',
+                    prefixIcon: const _WhatsAppIcon(),
+                    suffixIcon: _whatsapp.text.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.open_in_new, size: 18),
+                            tooltip: 'Ouvrir WhatsApp',
+                            onPressed: () =>
+                                _openWhatsApp(_whatsapp.text),
+                          )
+                        : null,
+                    helperText: 'Numéro international (+33…)',
+                  ),
+                  keyboardType: TextInputType.phone,
+                  textInputAction: TextInputAction.next,
+                  onChanged: (_) => setState(() {}),
+                ),
+                const SizedBox(height: 12),
+
+                // Email
                 TextFormField(
                   controller: _email,
                   decoration: const InputDecoration(
@@ -489,8 +587,8 @@ class _ClientFormSheetState extends ConsumerState<ClientFormSheet> {
                   onFieldSubmitted: (_) => _save(),
                 ),
               ],
-              const SizedBox(height: 24),
 
+              const SizedBox(height: 24),
               FilledButton(
                 onPressed: _saving ? null : _save,
                 style: FilledButton.styleFrom(
@@ -510,6 +608,38 @@ class _ClientFormSheetState extends ConsumerState<ClientFormSheet> {
                             fontSize: 16, fontWeight: FontWeight.w600)),
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Icône WhatsApp (cercle vert + W) ────────────────────────────────────────
+
+class _WhatsAppIcon extends StatelessWidget {
+  const _WhatsAppIcon();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(12),
+      child: Container(
+        width: 24,
+        height: 24,
+        decoration: const BoxDecoration(
+          color: Color(0xFF25D366),
+          shape: BoxShape.circle,
+        ),
+        child: const Center(
+          child: Text(
+            'W',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+              height: 1,
+            ),
           ),
         ),
       ),
