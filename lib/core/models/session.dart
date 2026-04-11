@@ -4,7 +4,8 @@ class WorkSession {
   final String projectId;
   final DateTime startedAt;
   final DateTime? endedAt;
-  final int? durationMinutes;
+  final int? durationMinutes;   // legacy — kept for backward compat
+  final int? durationSeconds;   // precise — utilisé pour HH:MM:SS
   final String? notes;
   final DateTime createdAt;
 
@@ -15,11 +16,18 @@ class WorkSession {
     required this.startedAt,
     this.endedAt,
     this.durationMinutes,
+    this.durationSeconds,
     this.notes,
     required this.createdAt,
   });
 
   bool get isRunning => endedAt == null;
+
+  /// Secondes travaillées — préfère durationSeconds, fallback sur durationMinutes × 60.
+  int get workedSeconds =>
+      durationSeconds ?? ((durationMinutes ?? 0) * 60);
+
+  Duration get worked => Duration(seconds: workedSeconds);
 
   factory WorkSession.fromJson(Map<String, dynamic> json) => WorkSession(
         id: json['id'] as String,
@@ -30,6 +38,7 @@ class WorkSession {
             ? DateTime.parse(json['ended_at'] as String)
             : null,
         durationMinutes: json['duration_minutes'] as int?,
+        durationSeconds: json['duration_seconds'] as int?,
         notes: json['notes'] as String?,
         createdAt: DateTime.parse(json['created_at'] as String),
       );
@@ -41,6 +50,7 @@ class WorkSession {
         'started_at': startedAt.toIso8601String(),
         if (endedAt != null) 'ended_at': endedAt!.toIso8601String(),
         if (durationMinutes != null) 'duration_minutes': durationMinutes,
+        if (durationSeconds != null) 'duration_seconds': durationSeconds,
         if (notes != null) 'notes': notes,
         'created_at': createdAt.toIso8601String(),
       };

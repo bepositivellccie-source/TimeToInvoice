@@ -117,6 +117,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                         path: 'projects/:projectId/sessions',
                         builder: (context, state) => SessionsScreen(
                           projectId: state.pathParameters['projectId']!,
+                          highlightSessionId: state.extra as String?,
                         ),
                       ),
                     ],

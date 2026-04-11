@@ -126,6 +126,7 @@ class TimerNotifier extends StateNotifier<TimerState> {
         .update({
           'ended_at': now.toIso8601String(),
           'duration_minutes': durationMinutes,
+          'duration_seconds': totalSecs,
         })
         .eq('id', state.activeSessionId!)
         .select()

@@ -273,6 +273,11 @@ class _TimerControlsState extends ConsumerState<_TimerControls> {
 
   Future<void> _stop(BuildContext context) async {
     setState(() => _loading = true);
+
+    // Capturer les refs avant l'opération async (FIX 6)
+    final messenger = ScaffoldMessenger.of(context);
+    final router = GoRouter.of(context);
+
     try {
       // Capture avant le stop
       final projectId = ref.read(timerProvider).selectedProjectId;
@@ -281,16 +286,16 @@ class _TimerControlsState extends ConsumerState<_TimerControls> {
       final (session, workedSecs) =
           await ref.read(timerProvider.notifier).stop();
 
-      // FIX 2 — invalidation cache sessions
+      // Invalidation cache sessions
       if (projectId != null) {
         ref.invalidate(sessionsByProjectProvider(projectId));
       }
 
-      // Snackbar enrichie
-      if (context.mounted && session != null) {
+      if (session != null) {
         final project = ref.read(projectsProvider).valueOrNull
             ?.where((p) => p.id == projectId)
             .firstOrNull;
+        final clientId = project?.clientId;
 
         final secs = workedSecs > 0 ? workedSecs : totalSecs;
         final h = (secs ~/ 3600).toString().padLeft(2, '0');
@@ -298,28 +303,93 @@ class _TimerControlsState extends ConsumerState<_TimerControls> {
         final s = (secs % 60).toString().padLeft(2, '0');
         final durationStr = '$h:$m:$s';
 
-        // BUG 1 — montant exact au centime
         final amount = (secs / 3600.0) * (project?.hourlyRate ?? 0);
         final currency = project?.currency ?? 'EUR';
-        final amountStr = amount
-            .toStringAsFixed(2)
-            .replaceAll('.', ',');
-
+        // Symbole lisible (€ au lieu de EUR)
+        final symbol = const {
+          'EUR': '€',
+          'USD': '\$',
+          'GBP': '£',
+          'CHF': 'CHF',
+        }[currency] ?? currency;
+        final amountStr =
+            amount.toStringAsFixed(2).replaceAll('.', ',');
         final projectName = project?.name ?? '';
+        final sessionId = session.id;
 
-        ScaffoldMessenger.of(context)
+        // FIX 5 — Snackbar 3 lignes avec hiérarchie visuelle
+        // FIX 6 — Tappable → SessionsScreen + surbrillance
+        messenger
           ..clearSnackBars()
           ..showSnackBar(
             SnackBar(
-              // BUG 2 — indéfinie jusqu'au swipe
               duration: const Duration(days: 365),
               dismissDirection: DismissDirection.horizontal,
               behavior: SnackBarBehavior.floating,
               backgroundColor: const Color(0xFF16A34A),
-              content: Text(
-                'Session enregistrée · $durationStr · $amountStr$currency · $projectName',
-                style: const TextStyle(
-                    color: Colors.white, fontWeight: FontWeight.w500),
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 16, vertical: 12),
+              content: GestureDetector(
+                onTap: () {
+                  messenger.hideCurrentSnackBar();
+                  if (clientId != null && projectId != null) {
+                    router.push(
+                      '/clients/$clientId/projects/$projectId/sessions',
+                      extra: sessionId,
+                    );
+                  }
+                },
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Ligne 1 — montant (grand, gras)
+                          Text(
+                            '$amountStr $symbol',
+                            style: const TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.white,
+                              height: 1.2,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          // Ligne 2 — durée HH:MM:SS
+                          Text(
+                            durationStr,
+                            style: const TextStyle(
+                              fontSize: 15,
+                              color: Colors.white,
+                              height: 1.3,
+                            ),
+                          ),
+                          const SizedBox(height: 1),
+                          // Ligne 3 — nom projet (semi-transparent)
+                          Text(
+                            projectName,
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.white.withAlpha(180),
+                              height: 1.3,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                    // Chevron — indique que la snackbar est tappable
+                    if (clientId != null)
+                      Icon(
+                        Icons.chevron_right,
+                        color: Colors.white.withAlpha(180),
+                        size: 22,
+                      ),
+                  ],
+                ),
               ),
             ),
           );
