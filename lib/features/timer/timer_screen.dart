@@ -98,6 +98,19 @@ class TimerScreen extends ConsumerWidget {
   }
 }
 
+// ─── Formatage durée lisible ──────────────────────────────────────────────────
+
+String _fmtDuration(int totalSeconds) {
+  if (totalSeconds < 60) return '${totalSeconds}s';
+  final h = totalSeconds ~/ 3600;
+  final m = (totalSeconds % 3600) ~/ 60;
+  final s = totalSeconds % 60;
+  if (h > 0) {
+    return m > 0 ? '${h}h ${m}min' : '${h}h';
+  }
+  return s > 0 ? '${m}min ${s}s' : '${m}min';
+}
+
 // ─── Project selector ─────────────────────────────────────────────────────────
 
 class _ProjectSelector extends ConsumerWidget {
@@ -225,21 +238,6 @@ class _TimerButtonState extends ConsumerState<_TimerButton> {
       final notifier = ref.read(timerProvider.notifier);
 
       if (widget.isRunning) {
-        // UX 2 — Sessions < 1 minute ignorées
-        final elapsed = ref.read(timerProvider).elapsed;
-        if (elapsed.inSeconds < 60) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: const Text(
-                  'Session trop courte — minimum 1 minute.'),
-              backgroundColor: Theme.of(context).colorScheme.error,
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
-          setState(() => _loading = false);
-          return;
-        }
-
         // Capture projectId avant le stop (le state change ensuite)
         final projectId = ref.read(timerProvider).selectedProjectId;
         final session = await notifier.stop();
@@ -254,14 +252,14 @@ class _TimerButtonState extends ConsumerState<_TimerButton> {
           final project = ref.read(projectsProvider).valueOrNull
               ?.where((p) => p.id == projectId)
               .firstOrNull;
-          final mins = session.durationMinutes ?? 0;
-          final hh = mins ~/ 60;
-          final mm = mins % 60;
-          final durationStr = hh > 0
-              ? '${hh}h${mm.toString().padLeft(2, '0')}'
-              : '${mm}min';
+          final totalSecs = session.endedAt != null
+              ? session.endedAt!
+                  .difference(session.startedAt)
+                  .inSeconds
+              : (session.durationMinutes ?? 0) * 60;
+          final durationStr = _fmtDuration(totalSecs);
           final amount =
-              (mins / 60.0) * (project?.hourlyRate ?? 0);
+              (totalSecs / 3600.0) * (project?.hourlyRate ?? 0);
           final currency = project?.currency ?? 'EUR';
           final amountStr =
               '${amount.toStringAsFixed(0)} $currency';
