@@ -6,7 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 // ── Remplace par ton Web Client ID Google Cloud Console ──────────────────────
 // APIs & Services → Credentials → OAuth 2.0 Client IDs → type "Web application"
 const _kGoogleWebClientId =
-    'REPLACE_WITH_YOUR_WEB_CLIENT_ID.apps.googleusercontent.com';
+    '387018121799-1qrhir98b9hqpi1m5196s0rdl1nc0kv3.apps.googleusercontent.com';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
