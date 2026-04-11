@@ -12,6 +12,7 @@ import '../../features/invoices/invoice_screen.dart';
 import '../../features/onboarding/onboarding_screen.dart';
 import '../../features/profile/profile_screen.dart';
 import '../../features/projects/projects_screen.dart';
+import '../../features/projects/project_select_screen.dart';
 
 final appRouterProvider = Provider<GoRouter>((ref) {
   final authState = ref.watch(authStateProvider);
@@ -58,6 +59,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/profile',
         builder: (context, state) => const ProfileScreen(),
+      ),
+
+      // ── Sélecteur de projet dédié (hors shell) ────────────────────────────
+      GoRoute(
+        path: '/projects/select',
+        builder: (context, state) => const ProjectSelectScreen(),
       ),
 
       // ── Facture (hors shell — écran focalisé) ─────────────────────────────

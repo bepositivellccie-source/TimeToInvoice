@@ -5,7 +5,10 @@ class Project {
   final String name;
   final double hourlyRate;
   final String currency;
+  final String status; // 'active' | 'completed'
   final DateTime createdAt;
+
+  bool get isActive => status == 'active';
 
   const Project({
     required this.id,
@@ -14,6 +17,7 @@ class Project {
     required this.name,
     required this.hourlyRate,
     this.currency = 'EUR',
+    this.status = 'active',
     required this.createdAt,
   });
 
@@ -24,6 +28,7 @@ class Project {
         name: json['name'] as String,
         hourlyRate: (json['hourly_rate'] as num).toDouble(),
         currency: json['currency'] as String? ?? 'EUR',
+        status: json['status'] as String? ?? 'active',
         createdAt: DateTime.parse(json['created_at'] as String),
       );
 
@@ -34,6 +39,24 @@ class Project {
         'name': name,
         'hourly_rate': hourlyRate,
         'currency': currency,
+        'status': status,
         'created_at': createdAt.toIso8601String(),
       };
+
+  Project copyWith({
+    String? name,
+    double? hourlyRate,
+    String? currency,
+    String? status,
+  }) =>
+      Project(
+        id: id,
+        userId: userId,
+        clientId: clientId,
+        name: name ?? this.name,
+        hourlyRate: hourlyRate ?? this.hourlyRate,
+        currency: currency ?? this.currency,
+        status: status ?? this.status,
+        createdAt: createdAt,
+      );
 }

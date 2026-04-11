@@ -96,7 +96,7 @@ typedef TimerEntry = ({Project project, String clientName});
 final timerProjectsProvider = FutureProvider<List<TimerEntry>>((ref) async {
   final projects = await ref.watch(projectsProvider.future);
   final clients = await ref.watch(clientsProvider.future);
-  final clientMap = {for (final c in clients) c.id: c.name};
+  final clientMap = {for (final c in clients) c.id: c.displayName};
   return projects
       .map((p) => (project: p, clientName: clientMap[p.clientId] ?? '—'))
       .toList();
