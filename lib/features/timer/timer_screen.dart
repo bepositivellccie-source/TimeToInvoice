@@ -98,19 +98,6 @@ class TimerScreen extends ConsumerWidget {
   }
 }
 
-// ─── Formatage durée lisible ──────────────────────────────────────────────────
-
-String _fmtDuration(int totalSeconds) {
-  if (totalSeconds < 60) return '${totalSeconds}s';
-  final h = totalSeconds ~/ 3600;
-  final m = (totalSeconds % 3600) ~/ 60;
-  final s = totalSeconds % 60;
-  if (h > 0) {
-    return m > 0 ? '${h}h ${m}min' : '${h}h';
-  }
-  return s > 0 ? '${m}min ${s}s' : '${m}min';
-}
-
 // ─── Project selector ─────────────────────────────────────────────────────────
 
 class _ProjectSelector extends ConsumerWidget {
@@ -253,13 +240,13 @@ class _TimerButtonState extends ConsumerState<_TimerButton> {
               ?.where((p) => p.id == projectId)
               .firstOrNull;
           final totalSecs = session.endedAt != null
-              ? session.endedAt!
-                  .difference(session.startedAt)
-                  .inSeconds
+              ? session.endedAt!.difference(session.startedAt).inSeconds
               : (session.durationMinutes ?? 0) * 60;
-          final durationStr = _fmtDuration(totalSecs);
-          final amount =
-              (totalSecs / 3600.0) * (project?.hourlyRate ?? 0);
+          final hh = (totalSecs ~/ 3600).toString().padLeft(2, '0');
+          final mm = ((totalSecs % 3600) ~/ 60).toString().padLeft(2, '0');
+          final ss = (totalSecs % 60).toString().padLeft(2, '0');
+          final durationStr = '$hh:$mm:$ss';
+          final amount = (totalSecs / 3600.0) * (project?.hourlyRate ?? 0);
           final currency = project?.currency ?? 'EUR';
           final amountStr =
               '${amount.toStringAsFixed(0)} $currency';
