@@ -14,7 +14,6 @@ class AppShell extends StatelessWidget {
         selectedIndex: navigationShell.currentIndex,
         onDestinationSelected: (index) => navigationShell.goBranch(
           index,
-          // Retourne à la racine du branch si déjà sélectionné
           initialLocation: index == navigationShell.currentIndex,
         ),
         destinations: const [
@@ -22,6 +21,11 @@ class AppShell extends StatelessWidget {
             icon: Icon(Icons.timer_outlined),
             selectedIcon: Icon(Icons.timer),
             label: 'Timer',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.folder_outlined),
+            selectedIcon: Icon(Icons.folder),
+            label: 'Projets',
           ),
           NavigationDestination(
             icon: Icon(Icons.people_outline),

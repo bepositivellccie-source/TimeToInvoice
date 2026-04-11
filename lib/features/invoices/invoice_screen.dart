@@ -6,8 +6,10 @@ import 'package:printing/printing.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/models/invoice_data.dart';
+import '../../core/models/profile.dart';
 import '../../core/models/session.dart';
 import '../../core/providers/clients_provider.dart';
+import '../../core/providers/profile_provider.dart';
 import '../../core/providers/projects_provider.dart';
 import '../../core/providers/sessions_provider.dart';
 import '../../core/utils/invoice_number.dart';
@@ -23,7 +25,7 @@ class InvoiceScreen extends ConsumerStatefulWidget {
 }
 
 class _InvoiceScreenState extends ConsumerState<InvoiceScreen> {
-  // Profil vendeur — chargé depuis Supabase user metadata
+  // Profil vendeur — chargé depuis la table profiles
   final _sellerNameCtrl = TextEditingController();
   final _sellerAddressCtrl = TextEditingController();
   final _sellerSiretCtrl = TextEditingController();
@@ -38,7 +40,7 @@ class _InvoiceScreenState extends ConsumerState<InvoiceScreen> {
   @override
   void initState() {
     super.initState();
-    _loadSellerProfile();
+    // Chargement via profileProvider (voir ref.listen dans build)
   }
 
   @override
@@ -49,29 +51,20 @@ class _InvoiceScreenState extends ConsumerState<InvoiceScreen> {
     super.dispose();
   }
 
-  // ─── Chargement profil vendeur depuis Supabase metadata ──────────────────
-
-  Future<void> _loadSellerProfile() async {
-    final meta =
-        Supabase.instance.client.auth.currentUser?.userMetadata ?? {};
-    if (mounted) {
-      setState(() {
-        _sellerNameCtrl.text = meta['seller_name'] as String? ?? '';
-        _sellerAddressCtrl.text = meta['seller_address'] as String? ?? '';
-        _sellerSiretCtrl.text = meta['seller_siret'] as String? ?? '';
-        _profileLoaded = true;
-      });
-    }
-  }
+  // ─── Sauvegarde profil vendeur dans la table profiles ────────────────────
 
   Future<void> _saveSellerProfile() async {
-    await Supabase.instance.client.auth.updateUser(
-      UserAttributes(data: {
-        'seller_name': _sellerNameCtrl.text.trim(),
-        'seller_address': _sellerAddressCtrl.text.trim(),
-        'seller_siret': _sellerSiretCtrl.text.trim(),
-      }),
-    );
+    await ref.read(profileProvider.notifier).save(Profile(
+          displayName: _sellerNameCtrl.text.trim().isEmpty
+              ? null
+              : _sellerNameCtrl.text.trim(),
+          address: _sellerAddressCtrl.text.trim().isEmpty
+              ? null
+              : _sellerAddressCtrl.text.trim(),
+          siret: _sellerSiretCtrl.text.trim().isEmpty
+              ? null
+              : _sellerSiretCtrl.text.trim(),
+        ));
   }
 
   // ─── Initialisation sélection par défaut ─────────────────────────────────
@@ -261,7 +254,33 @@ class _InvoiceScreenState extends ConsumerState<InvoiceScreen> {
   // ─── Build ────────────────────────────────────────────────────────────────
 
   @override
-  Widget build(BuildContext context, ) {
+  Widget build(BuildContext context) {
+    // Initialise les contrôleurs quand le profil est disponible
+    ref.listen(profileProvider, (prev, next) {
+      if (!_profileLoaded && next.valueOrNull != null) {
+        final p = next.valueOrNull!;
+        setState(() {
+          _sellerNameCtrl.text = p.displayName ?? '';
+          _sellerAddressCtrl.text = p.address ?? '';
+          _sellerSiretCtrl.text = p.siret ?? '';
+          _profileLoaded = true;
+        });
+      }
+    });
+    // Profil déjà en cache (hot reload / retour écran)
+    if (!_profileLoaded) {
+      final cached = ref.read(profileProvider).valueOrNull;
+      if (cached != null) {
+        _sellerNameCtrl.text = cached.displayName ?? '';
+        _sellerAddressCtrl.text = cached.address ?? '';
+        _sellerSiretCtrl.text = cached.siret ?? '';
+        _profileLoaded = true;
+      } else if (!ref.read(profileProvider).isLoading) {
+        // Pas de profil créé encore — afficher le formulaire vide
+        _profileLoaded = true;
+      }
+    }
+
     final sessionsAsync =
         ref.watch(sessionsByProjectProvider(widget.projectId));
     final project = ref.watch(projectsProvider).valueOrNull

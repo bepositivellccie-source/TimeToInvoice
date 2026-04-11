@@ -24,7 +24,14 @@ class SessionsScreen extends ConsumerWidget {
         title: Text(project?.name ?? 'Sessions'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: () => context.go('/clients/${project?.clientId}'),
+          // pop() si poussé depuis l'onglet Projets, sinon go() vers le client
+          onPressed: () {
+            if (context.canPop()) {
+              context.pop();
+            } else {
+              context.go('/clients/${project?.clientId}');
+            }
+          },
         ),
         actions: [
           IconButton(

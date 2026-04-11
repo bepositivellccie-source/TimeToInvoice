@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/providers/projects_provider.dart';
+import '../../core/providers/sessions_provider.dart';
 import 'timer_notifier.dart';
 
 class TimerScreen extends ConsumerWidget {
@@ -17,6 +18,12 @@ class TimerScreen extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('TimeToInvoice'),
         actions: [
+          // Accès au profil vendeur
+          IconButton(
+            icon: const Icon(Icons.person_outline),
+            tooltip: 'Mon profil',
+            onPressed: () => context.push('/profile'),
+          ),
           IconButton(
             icon: const Icon(Icons.logout),
             tooltip: 'Se déconnecter',
@@ -117,7 +124,7 @@ class _ProjectSelector extends ConsumerWidget {
               const SizedBox(width: 12),
               const Expanded(
                 child: Text(
-                    'Aucun projet — créez un client puis un projet dans l\'onglet Clients'),
+                    "Aucun projet — créez un client puis un projet dans l'onglet Clients"),
               ),
             ],
           ),
@@ -125,7 +132,6 @@ class _ProjectSelector extends ConsumerWidget {
       );
     }
 
-    // Vérifie que l'id sélectionné est toujours valide (projet supprimé?)
     final validId = entries.any((e) => e.project.id == selectedId)
         ? selectedId
         : null;
@@ -217,12 +223,57 @@ class _TimerButtonState extends ConsumerState<_TimerButton> {
     setState(() => _loading = true);
     try {
       final notifier = ref.read(timerProvider.notifier);
+
       if (widget.isRunning) {
-        await notifier.stop();
-        // Invalide les sessions pour que la liste se rafraîchisse
-        if (context.mounted) {
+        // UX 2 — Sessions < 1 minute ignorées
+        final elapsed = ref.read(timerProvider).elapsed;
+        if (elapsed.inSeconds < 60) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Session enregistrée ✓')),
+            SnackBar(
+              content: const Text(
+                  'Session trop courte — minimum 1 minute.'),
+              backgroundColor: Theme.of(context).colorScheme.error,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+          setState(() => _loading = false);
+          return;
+        }
+
+        // Capture projectId avant le stop (le state change ensuite)
+        final projectId = ref.read(timerProvider).selectedProjectId;
+        final session = await notifier.stop();
+
+        // FIX 2 — Invalide le cache sessions pour ce projet
+        if (projectId != null) {
+          ref.invalidate(sessionsByProjectProvider(projectId));
+        }
+
+        // FIX 4 — Snackbar verte enrichie
+        if (context.mounted && session != null) {
+          final project = ref.read(projectsProvider).valueOrNull
+              ?.where((p) => p.id == projectId)
+              .firstOrNull;
+          final mins = session.durationMinutes ?? 0;
+          final hh = mins ~/ 60;
+          final mm = mins % 60;
+          final durationStr = hh > 0
+              ? '${hh}h${mm.toString().padLeft(2, '0')}'
+              : '${mm}min';
+          final amount =
+              (mins / 60.0) * (project?.hourlyRate ?? 0);
+          final currency = project?.currency ?? 'EUR';
+          final amountStr =
+              '${amount.toStringAsFixed(0)} $currency';
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                  'Session enregistrée · $durationStr · ~$amountStr'),
+              backgroundColor: const Color(0xFF16A34A),
+              behavior: SnackBarBehavior.floating,
+              duration: const Duration(seconds: 3),
+            ),
           );
         }
       } else {

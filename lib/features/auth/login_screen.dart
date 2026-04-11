@@ -139,21 +139,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       resizeToAvoidBottomInset: true,
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              minHeight: MediaQuery.of(context).size.height -
-                  MediaQuery.of(context).padding.top -
-                  MediaQuery.of(context).padding.bottom -
-                  48,
-            ),
-            child: IntrinsicHeight(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const Spacer(),
-
-                  // ── Logo + tagline ───────────────────────────────────────
+          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 40),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // ── Logo + tagline ───────────────────────────────────────
                   Text(
                     'TimeToInvoice',
                     style: theme.textTheme.headlineMedium?.copyWith(
@@ -289,10 +279,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     ),
                   ),
 
-                  const Spacer(),
-                ],
-              ),
-            ),
+            ],
           ),
         ),
       ),
@@ -310,37 +297,42 @@ class _GoogleButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return OutlinedButton(
-      onPressed: loading ? null : onPressed,
-      style: OutlinedButton.styleFrom(
-        minimumSize: const Size(double.infinity, 52),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        side: const BorderSide(color: Color(0xFFE5E7EB), width: 1.5),
-        backgroundColor: Colors.white,
-        foregroundColor: const Color(0xFF374151),
-      ),
-      child: loading
-          ? const SizedBox(
-              height: 20,
-              width: 20,
-              child: CircularProgressIndicator(
-                  strokeWidth: 2, color: Color(0xFF374151)),
-            )
-          : Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                _GoogleLogo(),
-                const SizedBox(width: 12),
-                const Text(
-                  'Continuer avec Google',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w500,
-                    color: Color(0xFF374151),
+    return SizedBox(
+      height: 52,
+      width: double.infinity,
+      child: OutlinedButton(
+        onPressed: loading ? null : onPressed,
+        style: OutlinedButton.styleFrom(
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14)),
+          side: const BorderSide(color: Color(0xFFE5E7EB), width: 1.5),
+          backgroundColor: Colors.white,
+          foregroundColor: const Color(0xFF374151),
+          padding: EdgeInsets.zero,
+        ),
+        child: loading
+            ? const SizedBox(
+                height: 20,
+                width: 20,
+                child: CircularProgressIndicator(
+                    strokeWidth: 2, color: Color(0xFF374151)),
+              )
+            : Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _GoogleLogo(),
+                  const SizedBox(width: 10),
+                  const Text(
+                    'Continuer avec Google',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w500,
+                      color: Color(0xFF374151),
+                    ),
                   ),
-                ),
-              ],
-            ),
+                ],
+              ),
+      ),
     );
   }
 }

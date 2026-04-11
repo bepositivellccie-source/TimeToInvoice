@@ -10,9 +10,10 @@ import '../../features/sessions/sessions_screen.dart';
 import '../../features/shell/app_shell.dart';
 import '../../features/invoices/invoice_screen.dart';
 import '../../features/onboarding/onboarding_screen.dart';
+import '../../features/profile/profile_screen.dart';
+import '../../features/projects/projects_screen.dart';
 
 final appRouterProvider = Provider<GoRouter>((ref) {
-  // Watchers réactifs — tout changement reconstruit le router
   final authState = ref.watch(authStateProvider);
   final onboardingAsync = ref.watch(onboardingProvider);
 
@@ -22,22 +23,18 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       final isLoggedIn = authState.valueOrNull?.session != null;
       final loc = state.matchedLocation;
 
-      // ── Non authentifié → login ──────────────────────────────────────────
       if (!isLoggedIn) {
         return loc == '/login' ? null : '/login';
       }
 
-      // ── Authentifié sur /login → rediriger ───────────────────────────────
       if (loc == '/login') {
-        // Attend que onboarding soit résolu avant de choisir la destination
         final done = onboardingAsync.valueOrNull;
-        if (done == null) return null; // encore en chargement
+        if (done == null) return null;
         return done ? '/timer' : '/onboarding';
       }
 
-      // ── Vérification onboarding (après connexion) ────────────────────────
       final done = onboardingAsync.valueOrNull;
-      if (done == null) return null; // encore en chargement — ne pas bloquer
+      if (done == null) return null;
 
       if (!done && loc != '/onboarding') return '/onboarding';
       if (done && loc == '/onboarding') return '/timer';
@@ -55,6 +52,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/onboarding',
         builder: (context, state) => const OnboardingScreen(),
+      ),
+
+      // ── Profil vendeur (hors shell) ───────────────────────────────────────
+      GoRoute(
+        path: '/profile',
+        builder: (context, state) => const ProfileScreen(),
       ),
 
       // ── Facture (hors shell — écran focalisé) ─────────────────────────────
@@ -80,7 +83,17 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             ],
           ),
 
-          // Branch 1 — Clients → Client detail → Sessions
+          // Branch 1 — Projets (tous clients)
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/projects',
+                builder: (context, state) => const ProjectsScreen(),
+              ),
+            ],
+          ),
+
+          // Branch 2 — Clients → Client detail → Sessions
           StatefulShellBranch(
             routes: [
               GoRoute(

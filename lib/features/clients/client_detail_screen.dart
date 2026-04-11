@@ -365,10 +365,12 @@ class _ProjectFormSheetState extends ConsumerState<ProjectFormSheet> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       padding: EdgeInsets.fromLTRB(24, 24, 24, 24 + bottom),
-      child: Form(
-        key: _formKey,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+      // FIX 1 : scroll si le clavier pousse le contenu
+      child: SingleChildScrollView(
+        child: Form(
+          key: _formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Center(
@@ -466,6 +468,7 @@ class _ProjectFormSheetState extends ConsumerState<ProjectFormSheet> {
                   : Text(_isEdit ? 'Enregistrer' : 'Créer le projet'),
             ),
           ],
+          ),
         ),
       ),
     );

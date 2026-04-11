@@ -4,58 +4,34 @@ import 'package:go_router/go_router.dart';
 import '../../core/models/client.dart';
 import '../../core/providers/clients_provider.dart';
 
-class ClientsScreen extends ConsumerWidget {
+// ─── Screen ───────────────────────────────────────────────────────────────────
+
+class ClientsScreen extends ConsumerStatefulWidget {
   const ClientsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final clientsAsync = ref.watch(clientsProvider);
+  ConsumerState<ClientsScreen> createState() => _ClientsScreenState();
+}
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Clients'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.add),
-            tooltip: 'Nouveau client',
-            onPressed: () => _openForm(context, ref, null),
-          ),
-        ],
-      ),
-      body: clientsAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.error_outline, size: 48, color: Color(0xFFDC2626)),
-              const SizedBox(height: 12),
-              Text('Erreur: $e', textAlign: TextAlign.center),
-              const SizedBox(height: 12),
-              FilledButton(
-                onPressed: () => ref.invalidate(clientsProvider),
-                child: const Text('Réessayer'),
-              ),
-            ],
-          ),
-        ),
-        data: (clients) => clients.isEmpty
-            ? _EmptyState(onAdd: () => _openForm(context, ref, null))
-            : ListView.separated(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                itemCount: clients.length,
-                separatorBuilder: (_, index) => const SizedBox(height: 8),
-                itemBuilder: (_, i) => _ClientTile(
-                  client: clients[i],
-                  onEdit: () => _openForm(context, ref, clients[i]),
-                  onDelete: () => _confirmDelete(context, ref, clients[i]),
-                ),
-              ),
-      ),
-    );
+class _ClientsScreenState extends ConsumerState<ClientsScreen> {
+  final _searchCtrl = TextEditingController();
+  String _query = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _searchCtrl.addListener(() {
+      setState(() => _query = _searchCtrl.text.toLowerCase());
+    });
   }
 
-  void _openForm(BuildContext context, WidgetRef ref, Client? existing) {
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  void _openForm(BuildContext context, Client? existing) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -64,8 +40,7 @@ class ClientsScreen extends ConsumerWidget {
     );
   }
 
-  Future<void> _confirmDelete(
-      BuildContext context, WidgetRef ref, Client client) async {
+  Future<void> _confirmDelete(Client client) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -86,9 +61,116 @@ class ClientsScreen extends ConsumerWidget {
         ],
       ),
     );
-    if (confirmed == true && context.mounted) {
+    if (confirmed == true && mounted) {
       await ref.read(clientsProvider.notifier).delete(client.id);
     }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final clientsAsync = ref.watch(clientsProvider);
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Clients'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.add),
+            tooltip: 'Nouveau client',
+            onPressed: () => _openForm(context, null),
+          ),
+        ],
+      ),
+      body: clientsAsync.when(
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (e, _) => Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.error_outline,
+                  size: 48, color: Color(0xFFDC2626)),
+              const SizedBox(height: 12),
+              Text('Erreur: $e', textAlign: TextAlign.center),
+              const SizedBox(height: 12),
+              FilledButton(
+                onPressed: () => ref.invalidate(clientsProvider),
+                child: const Text('Réessayer'),
+              ),
+            ],
+          ),
+        ),
+        data: (clients) {
+          if (clients.isEmpty) {
+            return _EmptyState(onAdd: () => _openForm(context, null));
+          }
+
+          // Filtre recherche
+          final filtered = _query.isEmpty
+              ? clients
+              : clients
+                  .where((c) => c.name.toLowerCase().contains(_query))
+                  .toList();
+
+          return Column(
+            children: [
+              // ── SearchBar ───────────────────────────────────────────────
+              Padding(
+                padding:
+                    const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                child: TextField(
+                  controller: _searchCtrl,
+                  decoration: InputDecoration(
+                    hintText: 'Rechercher un client…',
+                    prefixIcon: const Icon(Icons.search, size: 20),
+                    suffixIcon: _query.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.close, size: 18),
+                            onPressed: () {
+                              _searchCtrl.clear();
+                            },
+                          )
+                        : null,
+                    isDense: true,
+                    contentPadding:
+                        const EdgeInsets.symmetric(vertical: 10),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                    filled: true,
+                    fillColor: const Color(0xFFF3F4F6),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 4),
+
+              // ── Liste ───────────────────────────────────────────────────
+              Expanded(
+                child: filtered.isEmpty
+                    ? Center(
+                        child: Text(
+                          'Aucun résultat pour "$_query"',
+                          style: const TextStyle(color: Color(0xFF9CA3AF)),
+                        ),
+                      )
+                    : ListView.separated(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 8),
+                        itemCount: filtered.length,
+                        separatorBuilder: (_, index) =>
+                            const SizedBox(height: 8),
+                        itemBuilder: (_, i) => _ClientTile(
+                          client: filtered[i],
+                          onEdit: () => _openForm(context, filtered[i]),
+                          onDelete: () => _confirmDelete(filtered[i]),
+                        ),
+                      ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
   }
 }
 
@@ -116,7 +198,7 @@ class _ClientTile extends StatelessWidget {
 
     final subtitle = client.siret != null
         ? 'SIRET: ${client.siret}'
-        : client.email ?? '';
+        : client.email ?? client.address ?? '';
 
     return Card(
       child: InkWell(
@@ -126,7 +208,6 @@ class _ClientTile extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           child: Row(
             children: [
-              // Avatar initiales
               CircleAvatar(
                 backgroundColor:
                     Theme.of(context).colorScheme.primaryContainer,
@@ -140,7 +221,6 @@ class _ClientTile extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 16),
-              // Nom + sous-titre
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -157,7 +237,6 @@ class _ClientTile extends StatelessWidget {
                   ],
                 ),
               ),
-              // Actions
               IconButton(
                 icon: const Icon(Icons.edit_outlined, size: 20),
                 color: const Color(0xFF6B7280),
@@ -217,7 +296,9 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
-// ─── Form bottom sheet (création + édition) ───────────────────────────────────
+// ─── Form bottom sheet ────────────────────────────────────────────────────────
+// UX 1 : seul le Nom est obligatoire.
+// SIRET / adresse / email sont optionnels, dans une section dépliable.
 
 class ClientFormSheet extends ConsumerStatefulWidget {
   final Client? existing;
@@ -235,6 +316,7 @@ class _ClientFormSheetState extends ConsumerState<ClientFormSheet> {
   late final TextEditingController _address;
   late final TextEditingController _email;
   bool _saving = false;
+  bool _optionalExpanded = false;
 
   bool get _isEdit => widget.existing != null;
 
@@ -246,6 +328,10 @@ class _ClientFormSheetState extends ConsumerState<ClientFormSheet> {
     _siret = TextEditingController(text: c?.siret ?? '');
     _address = TextEditingController(text: c?.address ?? '');
     _email = TextEditingController(text: c?.email ?? '');
+    // Déplie si des champs optionnels sont déjà remplis
+    _optionalExpanded = (c?.siret != null && c!.siret!.isNotEmpty) ||
+        (c?.address != null && c!.address!.isNotEmpty) ||
+        (c?.email != null && c!.email!.isNotEmpty);
   }
 
   @override
@@ -266,16 +352,18 @@ class _ClientFormSheetState extends ConsumerState<ClientFormSheet> {
         await notifier.edit(
           id: widget.existing!.id,
           name: _name.text.trim(),
-          siret: _siret.text.trim(),
-          address: _address.text.trim(),
-          email: _email.text.trim(),
+          siret: _siret.text.trim().isEmpty ? null : _siret.text.trim(),
+          address:
+              _address.text.trim().isEmpty ? null : _address.text.trim(),
+          email: _email.text.trim().isEmpty ? null : _email.text.trim(),
         );
       } else {
         await notifier.create(
           name: _name.text.trim(),
-          siret: _siret.text.trim(),
-          address: _address.text.trim(),
-          email: _email.text.trim(),
+          siret: _siret.text.trim().isEmpty ? null : _siret.text.trim(),
+          address:
+              _address.text.trim().isEmpty ? null : _address.text.trim(),
+          email: _email.text.trim().isEmpty ? null : _email.text.trim(),
         );
       }
       if (mounted) Navigator.pop(context);
@@ -294,94 +382,135 @@ class _ClientFormSheetState extends ConsumerState<ClientFormSheet> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       padding: EdgeInsets.fromLTRB(24, 24, 24, 24 + bottom),
-      child: Form(
-        key: _formKey,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Handle
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                margin: const EdgeInsets.only(bottom: 20),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE5E7EB),
-                  borderRadius: BorderRadius.circular(2),
+      // FIX 1 : scroll si le clavier pousse le contenu vers le haut
+      child: SingleChildScrollView(
+        child: Form(
+          key: _formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Handle
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 20),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE5E7EB),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
                 ),
               ),
-            ),
-            Text(
-              _isEdit ? 'Modifier le client' : 'Nouveau client',
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 20),
-            // Nom
-            TextFormField(
-              controller: _name,
-              decoration: const InputDecoration(
-                labelText: 'Nom *',
-                prefixIcon: Icon(Icons.business_outlined),
+              Text(
+                _isEdit ? 'Modifier le client' : 'Nouveau client',
+                style: const TextStyle(
+                    fontSize: 18, fontWeight: FontWeight.w700),
               ),
-              validator: (v) =>
-                  (v == null || v.trim().isEmpty) ? 'Champ requis' : null,
-              textInputAction: TextInputAction.next,
-            ),
-            const SizedBox(height: 12),
-            // SIRET
-            TextFormField(
-              controller: _siret,
-              decoration: const InputDecoration(
-                labelText: 'SIRET (14 chiffres)',
-                prefixIcon: Icon(Icons.tag_outlined),
+              const SizedBox(height: 20),
+
+              // ── Nom (obligatoire) ────────────────────────────────────────
+              TextFormField(
+                controller: _name,
+                decoration: const InputDecoration(
+                  labelText: 'Nom *',
+                  prefixIcon: Icon(Icons.business_outlined),
+                ),
+                validator: (v) =>
+                    (v == null || v.trim().isEmpty) ? 'Champ requis' : null,
+                textInputAction: TextInputAction.next,
+                textCapitalization: TextCapitalization.words,
+                autofocus: !_isEdit,
               ),
-              keyboardType: TextInputType.number,
-              maxLength: 14,
-              validator: (v) {
-                if (v == null || v.isEmpty) return null;
-                if (v.length != 14 || int.tryParse(v) == null) {
-                  return '14 chiffres exactement';
-                }
-                return null;
-              },
-              textInputAction: TextInputAction.next,
-            ),
-            const SizedBox(height: 4),
-            // Adresse
-            TextFormField(
-              controller: _address,
-              decoration: const InputDecoration(
-                labelText: 'Adresse',
-                prefixIcon: Icon(Icons.location_on_outlined),
+              const SizedBox(height: 16),
+
+              // ── Informations optionnelles (dépliables) ───────────────────
+              GestureDetector(
+                onTap: () =>
+                    setState(() => _optionalExpanded = !_optionalExpanded),
+                child: Row(
+                  children: [
+                    Icon(
+                      _optionalExpanded
+                          ? Icons.expand_less
+                          : Icons.expand_more,
+                      size: 18,
+                      color: const Color(0xFF6B7280),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Informations complémentaires (optionnel)',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: const Color(0xFF6B7280),
+                            fontWeight: FontWeight.w500,
+                          ),
+                    ),
+                  ],
+                ),
               ),
-              textInputAction: TextInputAction.next,
-            ),
-            const SizedBox(height: 12),
-            // Email
-            TextFormField(
-              controller: _email,
-              decoration: const InputDecoration(
-                labelText: 'Email',
-                prefixIcon: Icon(Icons.email_outlined),
+              if (_optionalExpanded) ...[
+                const SizedBox(height: 12),
+                // SIRET (optionnel, format validé seulement si rempli)
+                TextFormField(
+                  controller: _siret,
+                  decoration: const InputDecoration(
+                    labelText: 'SIRET (14 chiffres)',
+                    prefixIcon: Icon(Icons.tag_outlined),
+                  ),
+                  keyboardType: TextInputType.number,
+                  maxLength: 14,
+                  validator: (v) {
+                    if (v == null || v.isEmpty) return null;
+                    if (v.length != 14 || int.tryParse(v) == null) {
+                      return '14 chiffres exactement';
+                    }
+                    return null;
+                  },
+                  textInputAction: TextInputAction.next,
+                ),
+                const SizedBox(height: 4),
+                TextFormField(
+                  controller: _address,
+                  decoration: const InputDecoration(
+                    labelText: 'Adresse',
+                    prefixIcon: Icon(Icons.location_on_outlined),
+                  ),
+                  textInputAction: TextInputAction.next,
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _email,
+                  decoration: const InputDecoration(
+                    labelText: 'Email',
+                    prefixIcon: Icon(Icons.email_outlined),
+                  ),
+                  keyboardType: TextInputType.emailAddress,
+                  textInputAction: TextInputAction.done,
+                  onFieldSubmitted: (_) => _save(),
+                ),
+              ],
+              const SizedBox(height: 24),
+
+              FilledButton(
+                onPressed: _saving ? null : _save,
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size(double.infinity, 52),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14)),
+                ),
+                child: _saving
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.white),
+                      )
+                    : Text(_isEdit ? 'Enregistrer' : 'Créer le client',
+                        style: const TextStyle(
+                            fontSize: 16, fontWeight: FontWeight.w600)),
               ),
-              keyboardType: TextInputType.emailAddress,
-              textInputAction: TextInputAction.done,
-              onFieldSubmitted: (_) => _save(),
-            ),
-            const SizedBox(height: 24),
-            FilledButton(
-              onPressed: _saving ? null : _save,
-              child: _saving
-                  ? const SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.white),
-                    )
-                  : Text(_isEdit ? 'Enregistrer' : 'Créer le client'),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
