@@ -447,6 +447,7 @@ class _ClientFormSheetState extends ConsumerState<ClientFormSheet> {
                 controller: _firstName,
                 decoration: const InputDecoration(
                   labelText: 'Prénom',
+                  hintText: 'ex : Marie',
                   prefixIcon: Icon(Icons.person_outline),
                 ),
                 textCapitalization: TextCapitalization.words,
@@ -459,6 +460,7 @@ class _ClientFormSheetState extends ConsumerState<ClientFormSheet> {
                 controller: _name,
                 decoration: const InputDecoration(
                   labelText: 'Nom *',
+                  hintText: 'ex : Dupont',
                   prefixIcon: Icon(Icons.person_outline),
                 ),
                 validator: (v) =>
@@ -503,6 +505,7 @@ class _ClientFormSheetState extends ConsumerState<ClientFormSheet> {
                   controller: _company,
                   decoration: const InputDecoration(
                     labelText: 'Entreprise',
+                    hintText: 'ex : Cabinet Dupont SARL',
                     prefixIcon: Icon(Icons.business_outlined),
                   ),
                   textCapitalization: TextCapitalization.words,
@@ -515,6 +518,7 @@ class _ClientFormSheetState extends ConsumerState<ClientFormSheet> {
                   controller: _address,
                   decoration: const InputDecoration(
                     labelText: 'Adresse',
+                    hintText: 'ex : 12 rue de la Paix, 75001 Paris',
                     prefixIcon: Icon(Icons.location_on_outlined),
                   ),
                   textInputAction: TextInputAction.next,
@@ -526,6 +530,7 @@ class _ClientFormSheetState extends ConsumerState<ClientFormSheet> {
                   controller: _siret,
                   decoration: const InputDecoration(
                     labelText: 'SIRET (14 chiffres)',
+                    hintText: 'ex : 12345678901234',
                     prefixIcon: Icon(Icons.tag_outlined),
                   ),
                   keyboardType: TextInputType.number,
@@ -546,6 +551,7 @@ class _ClientFormSheetState extends ConsumerState<ClientFormSheet> {
                   controller: _phone,
                   decoration: const InputDecoration(
                     labelText: 'Téléphone',
+                    hintText: 'ex : +33 6 12 34 56 78',
                     prefixIcon: Icon(Icons.phone_outlined),
                   ),
                   keyboardType: TextInputType.phone,
@@ -558,6 +564,7 @@ class _ClientFormSheetState extends ConsumerState<ClientFormSheet> {
                   controller: _whatsapp,
                   decoration: InputDecoration(
                     labelText: 'WhatsApp',
+                    hintText: 'ex : +33 6 12 34 56 78',
                     prefixIcon: const _WhatsAppIcon(),
                     suffixIcon: _whatsapp.text.isNotEmpty
                         ? IconButton(
@@ -580,6 +587,7 @@ class _ClientFormSheetState extends ConsumerState<ClientFormSheet> {
                   controller: _email,
                   decoration: const InputDecoration(
                     labelText: 'Email',
+                    hintText: 'ex : marie.dupont@gmail.com',
                     prefixIcon: Icon(Icons.email_outlined),
                   ),
                   keyboardType: TextInputType.emailAddress,

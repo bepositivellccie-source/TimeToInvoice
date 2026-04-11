@@ -395,6 +395,7 @@ class _ProjectFormSheetState extends ConsumerState<ProjectFormSheet> {
               controller: _name,
               decoration: const InputDecoration(
                 labelText: 'Nom du projet *',
+                hintText: 'ex : Site e-commerce, Refonte logo…',
                 prefixIcon: Icon(Icons.folder_outlined),
               ),
               validator: (v) =>
@@ -410,6 +411,7 @@ class _ProjectFormSheetState extends ConsumerState<ProjectFormSheet> {
                     controller: _rate,
                     decoration: const InputDecoration(
                       labelText: 'Taux horaire *',
+                      hintText: 'ex : 75',
                       prefixIcon: Icon(Icons.euro_outlined),
                     ),
                     keyboardType: const TextInputType.numberWithOptions(

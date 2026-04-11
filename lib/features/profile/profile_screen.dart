@@ -112,6 +112,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     controller: _nameCtrl,
                     decoration: const InputDecoration(
                       labelText: 'Nom / raison sociale *',
+                      hintText: 'ex : Marie Dupont ou Cabinet Dupont',
                       prefixIcon: Icon(Icons.business_outlined),
                     ),
                     textInputAction: TextInputAction.next,
@@ -124,6 +125,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     controller: _addressCtrl,
                     decoration: const InputDecoration(
                       labelText: 'Adresse complète',
+                      hintText: 'ex : 12 rue de la Paix, 75001 Paris',
                       prefixIcon: Icon(Icons.location_on_outlined),
                     ),
                     textInputAction: TextInputAction.next,
@@ -136,6 +138,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     controller: _siretCtrl,
                     decoration: const InputDecoration(
                       labelText: 'SIRET (14 chiffres)',
+                      hintText: 'ex : 12345678901234',
                       prefixIcon: Icon(Icons.tag_outlined),
                       helperText: 'Auto-entrepreneur : SIRET = SIREN + NIC',
                     ),
