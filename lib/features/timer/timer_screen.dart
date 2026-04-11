@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../../core/models/project.dart';
 import '../../core/providers/projects_provider.dart';
 import 'timer_notifier.dart';
 
@@ -11,7 +10,7 @@ class TimerScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final timerState = ref.watch(timerProvider);
-    final projectsAsync = ref.watch(projectsProvider);
+    final entriesAsync = ref.watch(timerProjectsProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -19,6 +18,7 @@ class TimerScreen extends ConsumerWidget {
         actions: [
           IconButton(
             icon: const Icon(Icons.logout),
+            tooltip: 'Se déconnecter',
             onPressed: () async {
               await Supabase.instance.client.auth.signOut();
             },
@@ -31,7 +31,7 @@ class TimerScreen extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Section : sélection projet
+              // Label
               Text(
                 'Projet',
                 style: Theme.of(context).textTheme.labelLarge?.copyWith(
@@ -40,11 +40,12 @@ class TimerScreen extends ConsumerWidget {
                     ),
               ),
               const SizedBox(height: 8),
-              projectsAsync.when(
+              // Sélecteur Client · Projet
+              entriesAsync.when(
                 loading: () => const LinearProgressIndicator(),
                 error: (e, _) => Text('Erreur: $e'),
-                data: (projects) => _ProjectSelector(
-                  projects: projects,
+                data: (entries) => _ProjectSelector(
+                  entries: entries,
                   selectedId: timerState.selectedProjectId,
                   enabled: !timerState.isRunning,
                 ),
@@ -52,28 +53,25 @@ class TimerScreen extends ConsumerWidget {
               const SizedBox(height: 40),
 
               // Chrono
-              Center(
-                child: _ChronoDisplay(elapsed: timerState.elapsed),
-              ),
+              Center(child: _ChronoDisplay(elapsed: timerState.elapsed)),
               const SizedBox(height: 40),
 
-              // Bouton Start / Stop
+              // Start / Stop
               _TimerButton(
                 isRunning: timerState.isRunning,
                 hasProject: timerState.selectedProjectId != null,
               ),
               const SizedBox(height: 16),
 
-              // Bouton Créer facture (visible uniquement si timer arrêté et session existait)
+              // Bouton Créer facture (stub — Semaine 3)
               if (!timerState.isRunning &&
-                  timerState.selectedProjectId != null) ...[
+                  timerState.selectedProjectId != null)
                 OutlinedButton.icon(
                   onPressed: () {
-                    // TODO: naviguer vers création facture
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
-                        content: Text('Création de facture — Semaine 2 !'),
-                      ),
+                          content:
+                              Text('Génération de facture — Semaine 3 !')),
                     );
                   },
                   icon: const Icon(Icons.receipt_long_outlined),
@@ -81,15 +79,11 @@ class TimerScreen extends ConsumerWidget {
                   style: OutlinedButton.styleFrom(
                     minimumSize: const Size(double.infinity, 52),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+                        borderRadius: BorderRadius.circular(12)),
                     textStyle: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
+                        fontSize: 16, fontWeight: FontWeight.w600),
                   ),
                 ),
-              ],
             ],
           ),
         ),
@@ -101,28 +95,30 @@ class TimerScreen extends ConsumerWidget {
 // ─── Project selector ─────────────────────────────────────────────────────────
 
 class _ProjectSelector extends ConsumerWidget {
-  final List<Project> projects;
+  final List<TimerEntry> entries;
   final String? selectedId;
   final bool enabled;
 
   const _ProjectSelector({
-    required this.projects,
+    required this.entries,
     required this.selectedId,
     required this.enabled,
   });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    if (projects.isEmpty) {
+    if (entries.isEmpty) {
       return Card(
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Row(
             children: [
-              Icon(Icons.folder_open, color: Theme.of(context).colorScheme.primary),
+              Icon(Icons.info_outline,
+                  color: Theme.of(context).colorScheme.primary),
               const SizedBox(width: 12),
               const Expanded(
-                child: Text('Aucun projet — créez-en un d\'abord'),
+                child: Text(
+                    'Aucun projet — créez un client puis un projet dans l\'onglet Clients'),
               ),
             ],
           ),
@@ -130,15 +126,27 @@ class _ProjectSelector extends ConsumerWidget {
       );
     }
 
+    // Vérifie que l'id sélectionné est toujours valide (projet supprimé?)
+    final validId = entries.any((e) => e.project.id == selectedId)
+        ? selectedId
+        : null;
+
     return DropdownButtonFormField<String>(
       // ignore: deprecated_member_use
-      value: selectedId,
+      value: validId,
       decoration: const InputDecoration(
         prefixIcon: Icon(Icons.folder_outlined),
         hintText: 'Sélectionner un projet',
       ),
-      items: projects
-          .map((p) => DropdownMenuItem(value: p.id, child: Text(p.name)))
+      isExpanded: true,
+      items: entries
+          .map((e) => DropdownMenuItem(
+                value: e.project.id,
+                child: Text(
+                  '${e.clientName} · ${e.project.name}',
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ))
           .toList(),
       onChanged: enabled
           ? (id) {
@@ -212,6 +220,7 @@ class _TimerButtonState extends ConsumerState<_TimerButton> {
       final notifier = ref.read(timerProvider.notifier);
       if (widget.isRunning) {
         await notifier.stop();
+        // Invalide les sessions pour que la liste se rafraîchisse
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Session enregistrée ✓')),
@@ -229,7 +238,7 @@ class _TimerButtonState extends ConsumerState<_TimerButton> {
   Widget build(BuildContext context) {
     final canStart = widget.hasProject || widget.isRunning;
     final color = widget.isRunning
-        ? const Color(0xFFDC2626) // rouge quand actif
+        ? const Color(0xFFDC2626)
         : Theme.of(context).colorScheme.primary;
 
     return FilledButton.icon(
@@ -237,7 +246,8 @@ class _TimerButtonState extends ConsumerState<_TimerButton> {
       style: FilledButton.styleFrom(
         backgroundColor: color,
         minimumSize: const Size(double.infinity, 64),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       ),
       icon: _loading
           ? const SizedBox(
@@ -246,7 +256,10 @@ class _TimerButtonState extends ConsumerState<_TimerButton> {
               child: CircularProgressIndicator(
                   strokeWidth: 2, color: Colors.white),
             )
-          : Icon(widget.isRunning ? Icons.stop_rounded : Icons.play_arrow_rounded,
+          : Icon(
+              widget.isRunning
+                  ? Icons.stop_rounded
+                  : Icons.play_arrow_rounded,
               size: 28),
       label: Text(
         widget.isRunning ? 'Arrêter' : 'Démarrer',
