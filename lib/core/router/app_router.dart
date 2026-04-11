@@ -7,6 +7,7 @@ import '../../features/clients/clients_screen.dart';
 import '../../features/clients/client_detail_screen.dart';
 import '../../features/sessions/sessions_screen.dart';
 import '../../features/shell/app_shell.dart';
+import '../../features/invoices/invoice_screen.dart';
 
 final appRouterProvider = Provider<GoRouter>((ref) {
   final authState = ref.watch(authStateProvider);
@@ -25,6 +26,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/login',
         builder: (context, state) => const LoginScreen(),
+      ),
+
+      // ── Facture (push hors shell — écran focalisé) ────────────────────────
+      GoRoute(
+        path: '/invoices/new/:projectId',
+        builder: (context, state) => InvoiceScreen(
+          projectId: state.pathParameters['projectId']!,
+        ),
       ),
 
       // ── Shell avec bottom nav ─────────────────────────────────────────────

@@ -26,6 +26,14 @@ class SessionsScreen extends ConsumerWidget {
           icon: const Icon(Icons.arrow_back),
           onPressed: () => context.go('/clients/${project?.clientId}'),
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.receipt_long_outlined),
+            tooltip: 'Créer une facture',
+            onPressed: () =>
+                context.push('/invoices/new/$projectId'),
+          ),
+        ],
       ),
       body: sessionsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),

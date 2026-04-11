@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/providers/projects_provider.dart';
 import 'timer_notifier.dart';
@@ -63,21 +64,19 @@ class TimerScreen extends ConsumerWidget {
               ),
               const SizedBox(height: 16),
 
-              // Bouton Créer facture (stub — Semaine 3)
+              // Bouton Créer facture → InvoiceScreen
               if (!timerState.isRunning &&
                   timerState.selectedProjectId != null)
-                OutlinedButton.icon(
-                  onPressed: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                          content:
-                              Text('Génération de facture — Semaine 3 !')),
-                    );
-                  },
+                FilledButton.icon(
+                  onPressed: () => context.push(
+                    '/invoices/new/${timerState.selectedProjectId}',
+                  ),
                   icon: const Icon(Icons.receipt_long_outlined),
                   label: const Text('Créer une facture'),
-                  style: OutlinedButton.styleFrom(
+                  style: FilledButton.styleFrom(
                     minimumSize: const Size(double.infinity, 52),
+                    backgroundColor:
+                        Theme.of(context).colorScheme.secondary,
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12)),
                     textStyle: const TextStyle(
