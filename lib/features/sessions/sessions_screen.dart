@@ -23,6 +23,10 @@ class SessionsScreen extends ConsumerStatefulWidget {
 
 class _SessionsScreenState extends ConsumerState<SessionsScreen> {
   final _scrollController = ScrollController();
+  // IDs supprimés de façon optimiste — filtre les tiles avant que le provider
+  // ne revienne avec les nouvelles données, évite le bug "dismissed Dismissible
+  // still in tree" causé par un rebuild intermédiaire.
+  final _pendingDeletes = <String>{};
   String? _highlightedId;
   bool _highlightScheduled = false;
 
@@ -59,12 +63,31 @@ class _SessionsScreenState extends ConsumerState<SessionsScreen> {
   }
 
   Future<void> _deleteSession(String sessionId) async {
-    await ref
-        .read(supabaseClientProvider)
-        .from('sessions')
-        .delete()
-        .eq('id', sessionId);
-    ref.invalidate(sessionsByProjectProvider(widget.projectId));
+    try {
+      await ref
+          .read(supabaseClientProvider)
+          .from('sessions')
+          .delete()
+          .eq('id', sessionId);
+      // DELETE réussi — invalide le cache puis affiche le succès
+      if (!mounted) return;
+      ref.invalidate(sessionsByProjectProvider(widget.projectId));
+      ScaffoldMessenger.of(context)
+        ..clearSnackBars()
+        ..showSnackBar(
+          const SnackBar(
+            content: Text('Session supprimée'),
+            behavior: SnackBarBehavior.floating,
+            duration: Duration(seconds: 2),
+          ),
+        );
+    } catch (_) {
+      // Échec réseau — annule la suppression optimiste et resync
+      if (mounted) {
+        setState(() => _pendingDeletes.remove(sessionId));
+        ref.invalidate(sessionsByProjectProvider(widget.projectId));
+      }
+    }
   }
 
   @override
@@ -103,28 +126,37 @@ class _SessionsScreenState extends ConsumerState<SessionsScreen> {
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text('Erreur: $e')),
         data: (sessions) {
-          if (sessions.isEmpty) return const _EmptySessions();
+          // Filtre optimiste — exclut les sessions en cours de suppression
+          final displayed = sessions
+              .where((s) => !_pendingDeletes.contains(s.id))
+              .toList();
+
+          if (displayed.isEmpty) return const _EmptySessions();
 
           // Lance le scroll + minuterie de surbrillance une seule fois
           _scheduleHighlightClear();
 
           return Column(
             children: [
-              _SessionSummary(sessions: sessions),
+              _SessionSummary(sessions: displayed),
               Expanded(
                 child: ListView.separated(
                   controller: _scrollController,
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-                  itemCount: sessions.length,
+                  itemCount: displayed.length,
                   separatorBuilder: (context, index) =>
                       const SizedBox(height: 8),
                   itemBuilder: (context, i) {
-                    final session = sessions[i];
+                    final session = displayed[i];
                     return _SessionTile(
                       session: session,
                       index: i + 1, // #1 = la plus récente
                       isHighlighted: _highlightedId == session.id,
-                      onDelete: () => _deleteSession(session.id),
+                      onDelete: () {
+                        // Suppression optimiste — retire la tile avant la réponse réseau
+                        setState(() => _pendingDeletes.add(session.id));
+                        _deleteSession(session.id);
+                      },
                     );
                   },
                 ),
@@ -147,14 +179,10 @@ class _SessionSummary extends StatelessWidget {
   Widget build(BuildContext context) {
     final totalSecs =
         sessions.fold<int>(0, (sum, s) => sum + s.workedSeconds);
-    final h = totalSecs ~/ 3600;
-    final m = (totalSecs % 3600) ~/ 60;
-    final s = totalSecs % 60;
-    final timeStr = h > 0
-        ? '${h}h ${m.toString().padLeft(2, '0')}min'
-        : m > 0
-            ? '${m}min ${s.toString().padLeft(2, '0')}s'
-            : '${s}s';
+    final hh = (totalSecs ~/ 3600).toString().padLeft(2, '0');
+    final mm = ((totalSecs % 3600) ~/ 60).toString().padLeft(2, '0');
+    final ss = (totalSecs % 60).toString().padLeft(2, '0');
+    final timeStr = '$hh:$mm:$ss';
 
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 16, 16, 4),
@@ -171,7 +199,7 @@ class _SessionSummary extends StatelessWidget {
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Total tracké',
+              const Text('Temps travaillé',
                   style: TextStyle(fontSize: 12, color: Color(0xFF6B7280))),
               Text(
                 timeStr,

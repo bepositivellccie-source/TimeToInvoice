@@ -25,8 +25,50 @@ class Client {
     required this.createdAt,
   });
 
-  /// Nom d'affichage : "Prénom Nom" ou juste "Nom"
-  String get displayName =>
+  /// Label court selon le mode d'affichage utilisateur.
+  /// [mode] : 'company' | 'firstname_lastname' | 'lastname'
+  String labelWith(String mode) {
+    switch (mode) {
+      case 'company':
+        if (company != null && company!.isNotEmpty) return company!;
+        return fullPersonName.isNotEmpty ? fullPersonName : 'Client sans nom';
+      case 'firstname_lastname':
+        if (fullPersonName.isNotEmpty) return fullPersonName;
+        return company ?? 'Client sans nom';
+      case 'lastname':
+        if (name.isNotEmpty) return name;
+        return company ?? 'Client sans nom';
+      default:
+        return displayName;
+    }
+  }
+
+  /// Sous-titre adapté au mode — complète visuellement le label.
+  String subtitleWith(String mode) {
+    switch (mode) {
+      case 'company':
+        // Entreprise en titre → prénom+nom en sous-titre, sinon contact
+        if (company != null && company!.isNotEmpty) return fullPersonName;
+        return phone ?? email ?? (siret != null ? 'SIRET: $siret' : '');
+      case 'firstname_lastname':
+      case 'lastname':
+        // Nom en titre → entreprise en sous-titre, sinon contact
+        if (company != null && company!.isNotEmpty) return company!;
+        return phone ?? email ?? (siret != null ? 'SIRET: $siret' : '');
+      default:
+        if (company != null && company!.isNotEmpty) return fullPersonName;
+        return phone ?? email ?? (siret != null ? 'SIRET: $siret' : '');
+    }
+  }
+
+  /// Fallback company-first — utilisé pour les messages système (suppressions…)
+  String get displayName {
+    if (company != null && company!.isNotEmpty) return company!;
+    return fullPersonName;
+  }
+
+  /// Nom civil — "Prénom Nom" ou juste "Nom"
+  String get fullPersonName =>
       (firstName != null && firstName!.isNotEmpty) ? '$firstName $name' : name;
 
   factory Client.fromJson(Map<String, dynamic> json) => Client(

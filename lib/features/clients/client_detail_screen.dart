@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/models/client.dart';
 import '../../core/models/project.dart';
+import '../../core/providers/client_display_mode_provider.dart';
 import '../../core/providers/clients_provider.dart';
 import '../../core/providers/projects_provider.dart';
 
@@ -15,6 +17,7 @@ class ClientDetailScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final clientsAsync = ref.watch(clientsProvider);
     final projectsAsync = ref.watch(projectsByClientProvider(clientId));
+    final mode = ref.watch(clientDisplayModeProvider);
 
     // Retrouve le client depuis le cache existant
     final client = clientsAsync.valueOrNull
@@ -23,7 +26,7 @@ class ClientDetailScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(client?.name ?? 'Projets'),
+        title: Text(client?.labelWith(mode) ?? 'Projets'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => context.go('/clients'),
@@ -132,17 +135,34 @@ class _ClientHeader extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // ── Identité — entreprise bold + nom civil ───────────────────
+          if (client.company != null && client.company!.isNotEmpty) ...[
+            Text(
+              client.company!,
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF111827),
+              ),
+            ),
+            const SizedBox(height: 2),
+          ],
+          Text(
+            client.fullPersonName,
+            style: const TextStyle(
+              fontSize: 13,
+              color: Color(0xFF6B7280),
+            ),
+          ),
+          // ── Infos complémentaires ────────────────────────────────────
+          if (client.siret != null || client.address != null || client.email != null)
+            const SizedBox(height: 10),
           if (client.siret != null)
             _InfoRow(Icons.tag_outlined, 'SIRET: ${client.siret}'),
           if (client.address != null)
             _InfoRow(Icons.location_on_outlined, client.address!),
           if (client.email != null)
             _InfoRow(Icons.email_outlined, client.email!),
-          if (client.siret == null &&
-              client.address == null &&
-              client.email == null)
-            const Text('Aucune info complémentaire',
-                style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 13)),
         ],
       ),
     );
@@ -310,6 +330,8 @@ class _ProjectFormSheetState extends ConsumerState<ProjectFormSheet> {
 
   bool get _isEdit => widget.existing != null;
 
+  static const _kLastRate = 'last_hourly_rate';
+
   @override
   void initState() {
     super.initState();
@@ -318,6 +340,18 @@ class _ProjectFormSheetState extends ConsumerState<ProjectFormSheet> {
     _rate = TextEditingController(
         text: p != null ? p.hourlyRate.toStringAsFixed(0) : '');
     _currency = p?.currency ?? 'EUR';
+    // En mode création : pré-remplir avec le dernier taux utilisé
+    if (!_isEdit) _loadLastRate();
+  }
+
+  Future<void> _loadLastRate() async {
+    final prefs = await SharedPreferences.getInstance();
+    final last = prefs.getDouble(_kLastRate);
+    if (last != null && mounted && _rate.text.isEmpty) {
+      _rate.text = last == last.truncateToDouble()
+          ? last.toInt().toString()
+          : last.toStringAsFixed(2);
+    }
   }
 
   @override
@@ -332,6 +366,11 @@ class _ProjectFormSheetState extends ConsumerState<ProjectFormSheet> {
     setState(() => _saving = true);
     try {
       final rate = double.parse(_rate.text.trim().replaceAll(',', '.'));
+
+      // Persist for next project creation
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setDouble(_kLastRate, rate);
+
       final notifier = ref.read(projectsProvider.notifier);
       if (_isEdit) {
         await notifier.edit(

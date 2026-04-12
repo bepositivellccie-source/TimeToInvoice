@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/providers/projects_provider.dart';
+import '../../core/providers/sessions_provider.dart';
 
 class ProjectSelectScreen extends ConsumerStatefulWidget {
   const ProjectSelectScreen({super.key});
@@ -25,6 +26,7 @@ class _ProjectSelectScreenState extends ConsumerState<ProjectSelectScreen> {
   @override
   Widget build(BuildContext context) {
     final entriesAsync = ref.watch(timerProjectsProvider);
+    final totalsAsync = ref.watch(projectsTotalSecondsProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -146,6 +148,9 @@ class _ProjectSelectScreenState extends ConsumerState<ProjectSelectScreen> {
                   );
                 }
 
+                // totals peut être null pendant le chargement — on affiche 0
+                final totals = totalsAsync.valueOrNull ?? {};
+
                 return ListView.separated(
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
                   itemCount: filtered.length,
@@ -155,6 +160,7 @@ class _ProjectSelectScreenState extends ConsumerState<ProjectSelectScreen> {
                     final entry = filtered[i];
                     return _ProjectCard(
                       entry: entry,
+                      totalSeconds: totals[entry.project.id] ?? 0,
                       onTap: () => context.pop(entry.project.id),
                     );
                   },
@@ -219,9 +225,21 @@ class _StatusChip extends StatelessWidget {
 
 class _ProjectCard extends StatelessWidget {
   final TimerEntry entry;
+  final int totalSeconds;
   final VoidCallback onTap;
 
-  const _ProjectCard({required this.entry, required this.onTap});
+  const _ProjectCard({
+    required this.entry,
+    required this.totalSeconds,
+    required this.onTap,
+  });
+
+  static String _fmtHHMMSS(int secs) {
+    final h = (secs ~/ 3600).toString().padLeft(2, '0');
+    final m = ((secs % 3600) ~/ 60).toString().padLeft(2, '0');
+    final s = (secs % 60).toString().padLeft(2, '0');
+    return '$h:$m:$s';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -229,11 +247,6 @@ class _ProjectCard extends StatelessWidget {
     final isActive = project.isActive;
     final statusColor =
         isActive ? const Color(0xFF16A34A) : const Color(0xFF9CA3AF);
-
-    final rate = project.hourlyRate;
-    final rateStr = (rate.truncateToDouble() == rate)
-        ? rate.toInt().toString()
-        : rate.toStringAsFixed(2).replaceAll('.', ',');
 
     return Material(
       color: Colors.white,
@@ -291,7 +304,7 @@ class _ProjectCard extends StatelessWidget {
               ),
               const SizedBox(width: 12),
 
-              // ── Taux + statut ─────────────────────────────────────────
+              // ── Temps travaillé + statut ──────────────────────────────
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
@@ -299,15 +312,20 @@ class _ProjectCard extends StatelessWidget {
                     padding: const EdgeInsets.symmetric(
                         horizontal: 8, vertical: 3),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFEFF6FF),
+                      color: Theme.of(context)
+                          .colorScheme
+                          .primary
+                          .withAlpha(15),
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: Text(
-                      '$rateStr ${project.currency}/h',
-                      style: const TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF2563EB)),
+                      _fmtHHMMSS(totalSeconds),
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        fontFeatures: const [FontFeature.tabularFigures()],
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
                     ),
                   ),
                   const SizedBox(height: 6),

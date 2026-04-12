@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/project.dart';
+import 'client_display_mode_provider.dart';
 import 'supabase_provider.dart';
 import 'clients_provider.dart';
 
@@ -96,7 +97,8 @@ typedef TimerEntry = ({Project project, String clientName});
 final timerProjectsProvider = FutureProvider<List<TimerEntry>>((ref) async {
   final projects = await ref.watch(projectsProvider.future);
   final clients = await ref.watch(clientsProvider.future);
-  final clientMap = {for (final c in clients) c.id: c.displayName};
+  final mode = ref.watch(clientDisplayModeProvider);
+  final clientMap = {for (final c in clients) c.id: c.labelWith(mode)};
   return projects
       .map((p) => (project: p, clientName: clientMap[p.clientId] ?? '—'))
       .toList();

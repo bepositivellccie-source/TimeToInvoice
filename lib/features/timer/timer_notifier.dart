@@ -1,8 +1,13 @@
 import 'dart:async';
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 import '../../core/models/session.dart' as models;
+import '../../core/providers/sessions_provider.dart';
+import '../../core/services/timer_task_handler.dart';
+
+// ─── State ────────────────────────────────────────────────────────────────────
 
 class TimerState {
   final bool isRunning;
@@ -12,6 +17,7 @@ class TimerState {
   final Duration elapsed;           // temps du segment courant
   final Duration accumulated;       // temps travaillé avant le segment courant
   final String? selectedProjectId;
+  final String? selectedProjectName; // "Projet · Client" — affiché dans la notif
 
   const TimerState({
     this.isRunning = false,
@@ -21,6 +27,7 @@ class TimerState {
     this.elapsed = Duration.zero,
     this.accumulated = Duration.zero,
     this.selectedProjectId,
+    this.selectedProjectName,
   });
 
   /// Temps total travaillé (cumulé + segment courant)
@@ -35,7 +42,7 @@ class TimerState {
     Duration? elapsed,
     Duration? accumulated,
     String? selectedProjectId,
-    // nullable fields handled below
+    String? selectedProjectName,
   }) =>
       TimerState(
         isRunning: isRunning ?? this.isRunning,
@@ -45,19 +52,33 @@ class TimerState {
         elapsed: elapsed ?? this.elapsed,
         accumulated: accumulated ?? this.accumulated,
         selectedProjectId: selectedProjectId ?? this.selectedProjectId,
+        selectedProjectName: selectedProjectName ?? this.selectedProjectName,
       );
 }
 
+// ─── Notifier ────────────────────────────────────────────────────────────────
+
 class TimerNotifier extends StateNotifier<TimerState> {
   Timer? _ticker;
+  Future<void>? _pendingInsert; // insert optimiste en cours
   final SupabaseClient _supabase;
+  final Ref _ref;
 
-  TimerNotifier(this._supabase) : super(const TimerState());
-
-  void selectProject(String projectId) {
-    if (state.isActive) return; // pas de changement en cours de session
-    state = TimerState(selectedProjectId: projectId);
+  TimerNotifier(this._supabase, this._ref) : super(const TimerState()) {
+    FlutterForegroundTask.addTaskDataCallback(_onTaskData);
   }
+
+  // ── Sélection projet ─────────────────────────────────────────────────────────
+
+  void selectProject(String projectId, {String? projectName}) {
+    if (state.isActive) return;
+    state = TimerState(
+      selectedProjectId: projectId,
+      selectedProjectName: projectName,
+    );
+  }
+
+  // ── Démarrer ─────────────────────────────────────────────────────────────────
 
   Future<void> start() async {
     if (state.isActive || state.selectedProjectId == null) return;
@@ -66,23 +87,46 @@ class TimerNotifier extends StateNotifier<TimerState> {
 
     final now = DateTime.now().toUtc();
     final sessionId = const Uuid().v4();
+    final projectId = state.selectedProjectId!;
+    final projectName = state.selectedProjectName;
 
-    await _supabase.from('sessions').insert({
-      'id': sessionId,
-      'user_id': user.id,
-      'project_id': state.selectedProjectId,
-      'started_at': now.toIso8601String(),
-    });
-
+    // Optimiste — UI répond immédiatement, avant l'insert DB
     state = TimerState(
       isRunning: true,
       activeSessionId: sessionId,
       segmentStartedAt: now,
-      selectedProjectId: state.selectedProjectId,
+      selectedProjectId: projectId,
+      selectedProjectName: projectName,
     );
-
     _startTicker();
+    await _startForegroundService();
+
+    // Insert en arrière-plan — stop() l'attend avant de mettre à jour la ligne
+    _pendingInsert = () async {
+      try {
+        await _supabase.from('sessions').insert({
+          'id': sessionId,
+          'user_id': user.id,
+          'project_id': projectId,
+          'started_at': now.toIso8601String(),
+        });
+      } catch (_) {
+        // Rollback si l'insert échoue
+        _ticker?.cancel();
+        _ticker = null;
+        await FlutterForegroundTask.stopService();
+        state = TimerState(
+          selectedProjectId: projectId,
+          selectedProjectName: projectName,
+        );
+        rethrow;
+      } finally {
+        _pendingInsert = null;
+      }
+    }();
   }
+
+  // ── Pause ────────────────────────────────────────────────────────────────────
 
   void pause() {
     if (!state.isRunning) return;
@@ -93,8 +137,12 @@ class TimerNotifier extends StateNotifier<TimerState> {
       activeSessionId: state.activeSessionId,
       accumulated: state.accumulated + state.elapsed,
       selectedProjectId: state.selectedProjectId,
+      selectedProjectName: state.selectedProjectName,
     );
+    FlutterForegroundTask.sendDataToTask({'type': 'pause'});
   }
+
+  // ── Reprendre ────────────────────────────────────────────────────────────────
 
   void resume() {
     if (!state.isPaused) return;
@@ -105,9 +153,13 @@ class TimerNotifier extends StateNotifier<TimerState> {
       segmentStartedAt: now,
       accumulated: state.accumulated,
       selectedProjectId: state.selectedProjectId,
+      selectedProjectName: state.selectedProjectName,
     );
     _startTicker();
+    FlutterForegroundTask.sendDataToTask({'type': 'resume'});
   }
+
+  // ── Terminer ─────────────────────────────────────────────────────────────────
 
   /// Retourne la session enregistrée + le nombre de secondes travaillées.
   Future<(models.WorkSession?, int)> stop() async {
@@ -115,6 +167,14 @@ class TimerNotifier extends StateNotifier<TimerState> {
 
     _ticker?.cancel();
     _ticker = null;
+
+    // Attend l'insert optimiste si le démarrage n'est pas encore confirmé par la DB
+    try {
+      await _pendingInsert;
+    } catch (_) {
+      // L'insert a échoué — session inexistante, rien à terminer
+      return (null, 0);
+    }
 
     final now = DateTime.now().toUtc();
     final totalWorked = state.accumulated + state.elapsed;
@@ -133,10 +193,67 @@ class TimerNotifier extends StateNotifier<TimerState> {
         .single();
 
     final projectId = state.selectedProjectId;
-    state = TimerState(selectedProjectId: projectId);
+    state = TimerState(
+      selectedProjectId: projectId,
+      selectedProjectName: state.selectedProjectName,
+    );
+
+    await FlutterForegroundTask.stopService();
 
     return (models.WorkSession.fromJson(data), totalSecs);
   }
+
+  // ── Callback depuis le TaskHandler (actions boutons notification) ─────────────
+
+  void _onTaskData(Object data) {
+    if (data is! String) return;
+    switch (data) {
+      case 'btn_pause':
+        pause();
+      case 'btn_resume':
+        resume();
+      case 'btn_stop':
+        final projectId = state.selectedProjectId;
+        stop().then((_) {
+          if (projectId != null) {
+            _ref.invalidate(sessionsByProjectProvider(projectId));
+          }
+        });
+    }
+  }
+
+  // ── Foreground service ───────────────────────────────────────────────────────
+
+  Future<void> _startForegroundService() async {
+    final notifPermission =
+        await FlutterForegroundTask.checkNotificationPermission();
+    if (notifPermission != NotificationPermission.granted) {
+      await FlutterForegroundTask.requestNotificationPermission();
+    }
+
+    final projectName = state.selectedProjectName ?? 'Timer';
+
+    await FlutterForegroundTask.startService(
+      serviceId: 256,
+      notificationTitle: projectName,
+      notificationText: '00:00:00',
+      notificationButtons: const [
+        NotificationButton(id: 'btn_pause', text: '⏸ Pause'),
+        NotificationButton(id: 'btn_stop', text: '⏹ Terminer'),
+      ],
+      callback: startCallback,
+    );
+
+    // Synchronise l'état initial avec le TaskHandler
+    FlutterForegroundTask.sendDataToTask({
+      'type': 'init',
+      'secs': 0,
+      'name': projectName,
+      'paused': false,
+    });
+  }
+
+  // ── Ticker principal (main isolate) ──────────────────────────────────────────
 
   void _startTicker() {
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
@@ -149,12 +266,15 @@ class TimerNotifier extends StateNotifier<TimerState> {
 
   @override
   void dispose() {
+    FlutterForegroundTask.removeTaskDataCallback(_onTaskData);
     _ticker?.cancel();
     super.dispose();
   }
 }
 
+// ─── Provider ─────────────────────────────────────────────────────────────────
+
 final timerProvider =
     StateNotifierProvider<TimerNotifier, TimerState>((ref) {
-  return TimerNotifier(Supabase.instance.client);
+  return TimerNotifier(Supabase.instance.client, ref);
 });

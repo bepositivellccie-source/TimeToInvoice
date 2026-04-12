@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../core/providers/client_display_mode_provider.dart';
 import '../../core/providers/projects_provider.dart';
 import '../../core/providers/clients_provider.dart';
 import '../clients/client_detail_screen.dart';
@@ -217,13 +218,15 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
 
 // ─── Sélecteur de client (multi-client) ──────────────────────────────────────
 
-class _ClientPickerSheet extends StatelessWidget {
+class _ClientPickerSheet extends ConsumerWidget {
   final List clients;
 
   const _ClientPickerSheet({required this.clients});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final mode = ref.watch(clientDisplayModeProvider);
+
     return Container(
       decoration: const BoxDecoration(
         color: Colors.white,
@@ -267,7 +270,9 @@ class _ClientPickerSheet extends StatelessWidget {
               itemCount: clients.length,
               itemBuilder: (context, i) {
                 final c = clients[i];
-                final initials = c.displayName
+                final label = c.labelWith(mode);
+                final subtitle = c.subtitleWith(mode);
+                final initials = label
                     .trim()
                     .split(' ')
                     .take(2)
@@ -290,11 +295,11 @@ class _ClientPickerSheet extends StatelessWidget {
                     ),
                   ),
                   title: Text(
-                    c.displayName,
+                    label,
                     style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
-                  subtitle: c.company != null
-                      ? Text(c.company!,
+                  subtitle: subtitle.isNotEmpty
+                      ? Text(subtitle,
                           style: const TextStyle(
                               fontSize: 12, color: Color(0xFF6B7280)))
                       : null,
