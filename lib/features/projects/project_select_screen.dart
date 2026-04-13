@@ -245,8 +245,11 @@ class _ProjectCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final project = entry.project;
     final isActive = project.isActive;
-    final statusColor =
-        isActive ? const Color(0xFF16A34A) : const Color(0xFF9CA3AF);
+    final statusColor = project.status == 'en_attente'
+        ? const Color(0xFFF59E0B)
+        : isActive
+            ? const Color(0xFF16A34A)
+            : const Color(0xFF9CA3AF);
 
     return Material(
       color: Colors.white,
@@ -342,7 +345,11 @@ class _ProjectCard extends StatelessWidget {
                       ),
                       const SizedBox(width: 4),
                       Text(
-                        isActive ? 'En cours' : 'Terminé',
+                        project.status == 'en_attente'
+                            ? 'En attente'
+                            : isActive
+                                ? 'En cours'
+                                : 'Terminé',
                         style: TextStyle(
                           fontSize: 11,
                           color: statusColor,

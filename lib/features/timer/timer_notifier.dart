@@ -3,7 +3,6 @@ import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
-import '../../core/models/session.dart' as models;
 import '../../core/providers/sessions_provider.dart';
 import '../../core/services/timer_task_handler.dart';
 
@@ -161,46 +160,65 @@ class TimerNotifier extends StateNotifier<TimerState> {
 
   // ── Terminer ─────────────────────────────────────────────────────────────────
 
-  /// Retourne la session enregistrée + le nombre de secondes travaillées.
-  Future<(models.WorkSession?, int)> stop() async {
-    if (!state.isActive || state.activeSessionId == null) return (null, 0);
+  /// Données renvoyées immédiatement par [stop] pour l'UI (snackbar).
+  /// L'UPDATE Supabase se fait en arrière-plan.
+  ({String sessionId, DateTime startedAt, DateTime endedAt, int totalSecs, String? projectId})? stop() {
+    if (!state.isActive || state.activeSessionId == null) return null;
 
     _ticker?.cancel();
     _ticker = null;
 
-    // Attend l'insert optimiste si le démarrage n'est pas encore confirmé par la DB
-    try {
-      await _pendingInsert;
-    } catch (_) {
-      // L'insert a échoué — session inexistante, rien à terminer
-      return (null, 0);
-    }
-
     final now = DateTime.now().toUtc();
     final totalWorked = state.accumulated + state.elapsed;
     final totalSecs = totalWorked.inSeconds;
-    final durationMinutes = (totalSecs / 60.0).round();
-
-    final data = await _supabase
-        .from('sessions')
-        .update({
-          'ended_at': now.toIso8601String(),
-          'duration_minutes': durationMinutes,
-          'duration_seconds': totalSecs,
-        })
-        .eq('id', state.activeSessionId!)
-        .select()
-        .single();
-
+    final sessionId = state.activeSessionId!;
     final projectId = state.selectedProjectId;
+    final startedAt = state.segmentStartedAt ?? now;
+
+    // Reset immédiat de l'état local — UI réactive instantanément
     state = TimerState(
       selectedProjectId: projectId,
       selectedProjectName: state.selectedProjectName,
     );
 
-    await FlutterForegroundTask.stopService();
+    FlutterForegroundTask.stopService();
 
-    return (models.WorkSession.fromJson(data), totalSecs);
+    // UPDATE Supabase en arrière-plan
+    _updateSessionInBackground(sessionId, now, totalSecs);
+
+    return (
+      sessionId: sessionId,
+      startedAt: startedAt,
+      endedAt: now,
+      totalSecs: totalSecs,
+      projectId: projectId,
+    );
+  }
+
+  /// Attend l'insert optimiste puis met à jour la session dans Supabase.
+  /// En cas d'échec, affiche une erreur via un callback.
+  Future<void> _updateSessionInBackground(
+      String sessionId, DateTime endedAt, int totalSecs) async {
+    try {
+      await _pendingInsert;
+    } catch (_) {
+      // L'insert initial a échoué — session inexistante, rien à mettre à jour
+      return;
+    }
+
+    final durationMinutes = (totalSecs / 60.0).round();
+    try {
+      await _supabase
+          .from('sessions')
+          .update({
+            'ended_at': endedAt.toIso8601String(),
+            'duration_minutes': durationMinutes,
+            'duration_seconds': totalSecs,
+          })
+          .eq('id', sessionId);
+    } catch (_) {
+      // L'erreur sera visible au prochain refresh des sessions
+    }
   }
 
   // ── Callback depuis le TaskHandler (actions boutons notification) ─────────────
@@ -214,11 +232,11 @@ class TimerNotifier extends StateNotifier<TimerState> {
         resume();
       case 'btn_stop':
         final projectId = state.selectedProjectId;
-        stop().then((_) {
-          if (projectId != null) {
-            _ref.invalidate(sessionsByProjectProvider(projectId));
-          }
-        });
+        stop();
+        if (projectId != null) {
+          _ref.invalidate(sessionsByProjectProvider(projectId));
+        }
+        _ref.invalidate(projectsTotalSecondsProvider);
     }
   }
 

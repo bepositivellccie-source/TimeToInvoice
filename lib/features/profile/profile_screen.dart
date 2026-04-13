@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/models/profile.dart';
 import '../../core/providers/profile_provider.dart';
+import '../../core/providers/theme_mode_provider.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -170,9 +171,137 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                                 fontSize: 16, fontWeight: FontWeight.w600),
                           ),
                   ),
+
+                  const SizedBox(height: 32),
+                  const Divider(),
+                  const SizedBox(height: 16),
+
+                  // ── Apparence ───────────────────────────────────────────
+                  Text(
+                    'Apparence',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Choisissez le thème de l\'application.',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: const Color(0xFF6B7280),
+                        ),
+                  ),
+                  const SizedBox(height: 16),
+                  _ThemeModeSelector(),
                 ],
               ),
             ),
+    );
+  }
+}
+
+// ─── Sélecteur de thème ─────────────────────────────────────────────────────
+
+class _ThemeModeSelector extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final current = ref.watch(themeModeProvider);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Row(
+      children: [
+        _ThemeOption(
+          icon: Icons.phone_android,
+          label: 'Système',
+          isSelected: current == ThemeMode.system,
+          isDark: isDark,
+          onTap: () =>
+              ref.read(themeModeProvider.notifier).setMode(ThemeMode.system),
+        ),
+        const SizedBox(width: 12),
+        _ThemeOption(
+          icon: Icons.light_mode_outlined,
+          label: 'Clair',
+          isSelected: current == ThemeMode.light,
+          isDark: isDark,
+          onTap: () =>
+              ref.read(themeModeProvider.notifier).setMode(ThemeMode.light),
+        ),
+        const SizedBox(width: 12),
+        _ThemeOption(
+          icon: Icons.dark_mode_outlined,
+          label: 'Sombre',
+          isSelected: current == ThemeMode.dark,
+          isDark: isDark,
+          onTap: () =>
+              ref.read(themeModeProvider.notifier).setMode(ThemeMode.dark),
+        ),
+      ],
+    );
+  }
+}
+
+class _ThemeOption extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool isSelected;
+  final bool isDark;
+  final VoidCallback onTap;
+
+  const _ThemeOption({
+    required this.icon,
+    required this.label,
+    required this.isSelected,
+    required this.isDark,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final primary = Theme.of(context).colorScheme.primary;
+    final bgColor = isSelected
+        ? primary.withAlpha(20)
+        : isDark
+            ? const Color(0xFF1E293B)
+            : const Color(0xFFF3F4F6);
+    final borderColor = isSelected ? primary : Colors.transparent;
+    final iconColor = isSelected
+        ? primary
+        : isDark
+            ? const Color(0xFF94A3B8)
+            : const Color(0xFF6B7280);
+    final textColor = isSelected
+        ? primary
+        : isDark
+            ? const Color(0xFFCBD5E1)
+            : const Color(0xFF374151);
+
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          decoration: BoxDecoration(
+            color: bgColor,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: borderColor, width: 2),
+          ),
+          child: Column(
+            children: [
+              Icon(icon, size: 24, color: iconColor),
+              const SizedBox(height: 6),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: textColor,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

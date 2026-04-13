@@ -6,6 +6,7 @@ import '../../core/models/session.dart';
 import '../../core/providers/sessions_provider.dart';
 import '../../core/providers/projects_provider.dart';
 import '../../core/providers/supabase_provider.dart';
+import '../../core/theme/app_colors.dart';
 
 class SessionsScreen extends ConsumerStatefulWidget {
   final String projectId;
@@ -29,6 +30,7 @@ class _SessionsScreenState extends ConsumerState<SessionsScreen> {
   final _pendingDeletes = <String>{};
   String? _highlightedId;
   bool _highlightScheduled = false;
+  String _timeFilter = 'all'; // 'all' | 'today' | 'week' | 'month'
 
   @override
   void initState() {
@@ -127,11 +129,33 @@ class _SessionsScreenState extends ConsumerState<SessionsScreen> {
         error: (e, _) => Center(child: Text('Erreur: $e')),
         data: (sessions) {
           // Filtre optimiste — exclut les sessions en cours de suppression
-          final displayed = sessions
+          final all = sessions
               .where((s) => !_pendingDeletes.contains(s.id))
               .toList();
 
-          if (displayed.isEmpty) return const _EmptySessions();
+          if (all.isEmpty) return const _EmptySessions();
+
+          // Filtre temporel
+          final now = DateTime.now();
+          final today = DateTime(now.year, now.month, now.day);
+          final weekStart = today.subtract(Duration(days: today.weekday - 1));
+          final monthStart = DateTime(now.year, now.month);
+
+          final displayed = _timeFilter == 'all'
+              ? all
+              : all.where((s) {
+                  final d = s.startedAt.toLocal();
+                  switch (_timeFilter) {
+                    case 'today':
+                      return !d.isBefore(today);
+                    case 'week':
+                      return !d.isBefore(weekStart);
+                    case 'month':
+                      return !d.isBefore(monthStart);
+                    default:
+                      return true;
+                  }
+                }).toList();
 
           // Lance le scroll + minuterie de surbrillance une seule fois
           _scheduleHighlightClear();
@@ -139,31 +163,117 @@ class _SessionsScreenState extends ConsumerState<SessionsScreen> {
           return Column(
             children: [
               _SessionSummary(sessions: displayed),
-              Expanded(
-                child: ListView.separated(
-                  controller: _scrollController,
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-                  itemCount: displayed.length,
-                  separatorBuilder: (context, index) =>
-                      const SizedBox(height: 8),
-                  itemBuilder: (context, i) {
-                    final session = displayed[i];
-                    return _SessionTile(
-                      session: session,
-                      index: i + 1, // #1 = la plus récente
-                      isHighlighted: _highlightedId == session.id,
-                      onDelete: () {
-                        // Suppression optimiste — retire la tile avant la réponse réseau
-                        setState(() => _pendingDeletes.add(session.id));
-                        _deleteSession(session.id);
-                      },
-                    );
-                  },
+              // ── Chips filtre temporel ─────────────────────────────────
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+                child: Row(
+                  children: [
+                    _FilterChip(
+                      label: 'Tout',
+                      selected: _timeFilter == 'all',
+                      onTap: () => setState(() => _timeFilter = 'all'),
+                    ),
+                    const SizedBox(width: 8),
+                    _FilterChip(
+                      label: "Aujourd'hui",
+                      selected: _timeFilter == 'today',
+                      onTap: () => setState(() => _timeFilter = 'today'),
+                    ),
+                    const SizedBox(width: 8),
+                    _FilterChip(
+                      label: 'Semaine',
+                      selected: _timeFilter == 'week',
+                      onTap: () => setState(() => _timeFilter = 'week'),
+                    ),
+                    const SizedBox(width: 8),
+                    _FilterChip(
+                      label: 'Mois',
+                      selected: _timeFilter == 'month',
+                      onTap: () => setState(() => _timeFilter = 'month'),
+                    ),
+                  ],
                 ),
+              ),
+              Expanded(
+                child: displayed.isEmpty
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(32),
+                          child: Text(
+                            'Aucune session sur cette période',
+                            style: TextStyle(
+                                color: const Color(0xFF9CA3AF),
+                                fontSize: 14),
+                          ),
+                        ),
+                      )
+                    : ListView.separated(
+                        controller: _scrollController,
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+                        itemCount: displayed.length,
+                        separatorBuilder: (context, index) =>
+                            const SizedBox(height: 8),
+                        itemBuilder: (context, i) {
+                          final session = displayed[i];
+                          return _SessionTile(
+                            session: session,
+                            index: i + 1,
+                            isHighlighted: _highlightedId == session.id,
+                            onDelete: () {
+                              setState(() => _pendingDeletes.add(session.id));
+                              _deleteSession(session.id);
+                            },
+                          );
+                        },
+                      ),
               ),
             ],
           );
         },
+      ),
+    );
+  }
+}
+
+// ─── Summary ──────────────────────────────────────────────────────────────────
+
+// ─── Filter chip ─────────────────────────────────────────────────────────────
+
+class _FilterChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _FilterChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = Theme.of(context).colorScheme.primary;
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: selected ? color.withAlpha(25) : Colors.transparent,
+          border: Border.all(
+            color: selected ? color : const Color(0xFFE5E7EB),
+            width: selected ? 1.5 : 1,
+          ),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+            color: selected ? color : const Color(0xFF6B7280),
+          ),
+        ),
       ),
     );
   }
@@ -226,9 +336,9 @@ class _SessionSummary extends StatelessWidget {
   }
 }
 
-// ─── Session tile — Dismissible + highlight ───────────────────────────────────
+// ─── Session tile — Swipe gauche → fond rouge + icône poubelle → dialog ─────
 
-class _SessionTile extends StatelessWidget {
+class _SessionTile extends StatefulWidget {
   final WorkSession session;
   final int index;
   final bool isHighlighted;
@@ -240,6 +350,15 @@ class _SessionTile extends StatelessWidget {
     required this.isHighlighted,
     required this.onDelete,
   });
+
+  @override
+  State<_SessionTile> createState() => _SessionTileState();
+}
+
+class _SessionTileState extends State<_SessionTile> {
+  /// Offset horizontal continu (négatif = swipe gauche).
+  double _dragOffset = 0;
+  bool _dialogShown = false;
 
   static String _fmtTime(DateTime dt) =>
       DateFormat('HH:mm').format(dt.toLocal());
@@ -254,157 +373,164 @@ class _SessionTile extends StatelessWidget {
     return '$h:$m:$s';
   }
 
+  Future<void> _confirmDelete() async {
+    if (_dialogShown) return;
+    _dialogShown = true;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Supprimer cette session ?'),
+        content: const Text('Cette action est irréversible.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Annuler'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+                backgroundColor: AppColors.danger),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Supprimer'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+    _dialogShown = false;
+    if (confirmed == true) {
+      widget.onDelete();
+    } else {
+      setState(() => _dragOffset = 0);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final session = widget.session;
     final startStr = _fmtTime(session.startedAt);
     final endStr =
         session.endedAt != null ? _fmtTime(session.endedAt!) : '—';
     final dateStr = _fmtDate(session.startedAt);
     final durationStr = _fmtHHMMSS(session.workedSeconds);
+    final screenWidth = MediaQuery.sizeOf(context).width;
 
-    return Dismissible(
-      key: ValueKey(session.id),
-      direction: DismissDirection.startToEnd,
-      // Fond rouge + icône visible pendant le swipe
-      background: Container(
-        decoration: BoxDecoration(
-          color: const Color(0xFFDC2626),
-          borderRadius: BorderRadius.circular(14),
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: 20),
-        alignment: Alignment.centerLeft,
-        child: const Row(
-          children: [
-            Icon(Icons.delete_outline, color: Colors.white, size: 22),
-            SizedBox(width: 8),
-            Text(
-              'Supprimer',
-              style: TextStyle(
-                  color: Colors.white, fontWeight: FontWeight.w600),
-            ),
-          ],
-        ),
-      ),
-      // Dialog de confirmation AVANT la suppression
-      confirmDismiss: (_) => showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('Supprimer cette session ?'),
-          content: const Text('Cette action est irréversible.'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Annuler'),
-            ),
-            FilledButton(
-              style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFFDC2626)),
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Supprimer'),
-            ),
-          ],
-        ),
-      ),
-      onDismissed: (_) => onDelete(),
-      // Card avec AnimatedContainer pour la surbrillance
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 800),
-        curve: Curves.easeOut,
-        decoration: BoxDecoration(
-          color: isHighlighted ? const Color(0xFFFEF9C3) : Colors.white,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: isHighlighted
-                ? const Color(0xFFF59E0B)
-                : const Color(0xFFE5E7EB),
-            width: isHighlighted ? 1.5 : 1,
-          ),
-        ),
-        child: Padding(
-          padding:
-              const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          child: Row(
-            children: [
-              // ── Badge #N ─────────────────────────────────────────────
-              Container(
-                width: 34,
-                height: 34,
+    // Opacité progressive de l'icône poubelle (apparaît après 30px de swipe)
+    final deleteOpacity = (_dragOffset.abs() / 80).clamp(0.0, 1.0);
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(14),
+      child: Stack(
+        children: [
+          // ── Fond rouge continu ──────────────────────────────────────
+          if (_dragOffset < 0)
+            Positioned.fill(
+              child: Container(
                 decoration: BoxDecoration(
-                  color: isHighlighted
-                      ? const Color(0xFFFEF3C7)
-                      : const Color(0xFFF3F4F6),
-                  borderRadius: BorderRadius.circular(8),
+                  color: AppColors.danger,
+                  borderRadius: BorderRadius.circular(14),
                 ),
-                child: Center(
-                  child: Text(
-                    '#$index',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w800,
-                      color: isHighlighted
-                          ? const Color(0xFFD97706)
-                          : const Color(0xFF6B7280),
-                    ),
-                  ),
+                alignment: Alignment.centerRight,
+                padding: const EdgeInsets.only(right: 24),
+                child: Opacity(
+                  opacity: deleteOpacity,
+                  child: const Icon(Icons.delete_outline,
+                      color: Colors.white, size: 26),
                 ),
               ),
-              const SizedBox(width: 12),
-              // ── Horaires + date ───────────────────────────────────────
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '$startStr → $endStr',
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w700, fontSize: 14),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      dateStr,
-                      style: const TextStyle(
-                          fontSize: 12, color: Color(0xFF6B7280)),
-                    ),
-                    if (session.notes != null &&
-                        session.notes!.isNotEmpty) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        session.notes!,
-                        style: const TextStyle(
-                          fontSize: 11,
-                          color: Color(0xFF9CA3AF),
-                          fontStyle: FontStyle.italic,
+            ),
+          // ── Card glissante — geste continu fluide ───────────────────
+          AnimatedContainer(
+            duration: Duration(milliseconds: _dragOffset == 0 ? 200 : 0),
+            curve: Curves.easeOut,
+            transform: Matrix4.translationValues(_dragOffset, 0, 0),
+            child: GestureDetector(
+              onHorizontalDragUpdate: (details) {
+                setState(() {
+                  _dragOffset = (_dragOffset + details.delta.dx)
+                      .clamp(-screenWidth, 0.0);
+                });
+              },
+              onHorizontalDragEnd: (details) {
+                final velocity = details.primaryVelocity ?? 0;
+                // Seuil : 30% de l'écran ou vélocité rapide → confirmation
+                if (_dragOffset < -screenWidth * 0.30 || velocity < -800) {
+                  _confirmDelete();
+                } else {
+                  setState(() => _dragOffset = 0);
+                }
+              },
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 600),
+                curve: Curves.easeOut,
+                decoration: BoxDecoration(
+                  color: widget.isHighlighted
+                      ? const Color(0xFFFEF9C3)
+                      : AppColors.primarySurf,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: widget.isHighlighted
+                        ? const Color(0xFFF59E0B)
+                        : AppColors.primary.withAlpha(50),
+                    width: widget.isHighlighted ? 1.5 : 1,
+                  ),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 14, vertical: 12),
+                  child: Row(
+                    children: [
+                      // ── Horaires + date ───────────────────────────
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '$startStr → $endStr  ·  $dateStr',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w500,
+                                fontSize: 14,
+                                color: AppColors.textDark,
+                              ),
+                            ),
+                            if (session.notes != null &&
+                                session.notes!.isNotEmpty) ...[
+                              const SizedBox(height: 2),
+                              Text(
+                                session.notes!,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: AppColors.textMuted,
+                                  fontStyle: FontStyle.italic,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ],
                         ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
                       ),
+                      const SizedBox(width: 8),
+                      // ── Durée ─────────────────────────────────────
+                      Text(
+                        durationStr,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w500,
+                          fontSize: 13,
+                          fontFeatures: [FontFeature.tabularFigures()],
+                          color: AppColors.primary,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      const Icon(Icons.chevron_right,
+                          color: AppColors.textMuted, size: 18),
                     ],
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              // ── Badge durée HH:MM:SS ──────────────────────────────────
-              Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 9, vertical: 5),
-                decoration: BoxDecoration(
-                  color:
-                      Theme.of(context).colorScheme.primary.withAlpha(15),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  durationStr,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 12,
-                    fontFeatures: const [FontFeature.tabularFigures()],
-                    color: Theme.of(context).colorScheme.primary,
                   ),
                 ),
               ),
-            ],
+            ),
           ),
-        ),
+        ],
       ),
     );
   }

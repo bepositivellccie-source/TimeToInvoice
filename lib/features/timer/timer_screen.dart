@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/providers/projects_provider.dart';
 import '../../core/providers/sessions_provider.dart';
+import '../../core/theme/app_colors.dart';
 import 'timer_notifier.dart';
 
 class TimerScreen extends ConsumerWidget {
@@ -149,102 +150,112 @@ class _ProjectSelectorButton extends ConsumerWidget {
       }
     }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        // ── Card tappable (Ink pour ripple visible sur fond décoré) ──────
-        Ink(
+    final primary = Theme.of(context).colorScheme.primary;
+    final hasSelection = selected != null;
+
+    return Material(
+      color: hasSelection
+          ? primary.withAlpha(18)
+          : Colors.white,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        onTap: enabled ? onTap : null,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: enabled
-                  ? Theme.of(context).colorScheme.outline.withAlpha(80)
+              color: hasSelection
+                  ? primary.withAlpha(60)
                   : const Color(0xFFE5E7EB),
+              width: hasSelection ? 1.5 : 1,
             ),
-            borderRadius: BorderRadius.circular(14),
-            color: enabled ? Colors.white : const Color(0xFFF9FAFB),
           ),
-          child: InkWell(
-            onTap: enabled ? onTap : null,
-            borderRadius: BorderRadius.circular(14),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 16, vertical: 14),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.folder_outlined,
-                    color: selected != null
-                        ? Theme.of(context).colorScheme.primary
-                        : const Color(0xFF9CA3AF),
-                    size: 22,
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: selected != null
-                        ? Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              // Nom du projet — hiérarchie principale
-                              Text(
-                                selected.project.name,
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w600,
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .onSurface,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              const SizedBox(height: 2),
-                              // Nom du client — secondaire
-                              Text(
-                                selected.clientName,
-                                style: const TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w400,
-                                  color: Color(0xFF6B7280),
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ],
-                          )
-                        : const Text(
-                            'Sélectionner un projet',
-                            style: TextStyle(
-                                color: Color(0xFF9CA3AF), fontSize: 15),
-                          ),
-                  ),
-                  if (enabled) ...[
-                    const SizedBox(width: 8),
-                    const Icon(Icons.chevron_right,
-                        size: 24, color: Color(0xFF6B7280)),
-                  ],
-                ],
+          child: Row(
+            children: [
+              // ── Icône projet ──────────────────────────────────────
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: hasSelection
+                      ? primary.withAlpha(30)
+                      : const Color(0xFFF3F4F6),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(
+                  Icons.folder_outlined,
+                  color: hasSelection ? primary : const Color(0xFF9CA3AF),
+                  size: 20,
+                ),
               ),
-            ),
+              const SizedBox(width: 14),
+              // ── Label ─────────────────────────────────────────────
+              Expanded(
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 150),
+                  child: hasSelection
+                      ? Column(
+                          key: ValueKey(selected.project.id),
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              selected.project.name,
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onSurface,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              selected.clientName,
+                              style: const TextStyle(
+                                fontSize: 13,
+                                color: Color(0xFF6B7280),
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        )
+                      : Text(
+                          'Choisir un chantier',
+                          key: const ValueKey('no-project'),
+                          style: TextStyle(
+                              color: primary.withAlpha(120),
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600),
+                        ),
+                ),
+              ),
+              if (enabled) ...[
+                const SizedBox(width: 8),
+                Container(
+                  width: 28,
+                  height: 28,
+                  decoration: BoxDecoration(
+                    color: hasSelection
+                        ? primary.withAlpha(20)
+                        : primary.withAlpha(15),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(Icons.chevron_right,
+                      size: 18,
+                      color: hasSelection
+                          ? primary
+                          : primary.withAlpha(150)),
+                ),
+              ],
+            ],
           ),
         ),
-
-        // ── Hint — visible uniquement quand le sélecteur est actif ──────
-        if (enabled)
-          Padding(
-            padding: const EdgeInsets.only(top: 6),
-            child: Text(
-              'Appuyer pour changer de chantier',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 11,
-                color: Theme.of(context)
-                    .colorScheme
-                    .onSurface
-                    .withAlpha(60),
-              ),
-            ),
-          ),
-      ],
+      ),
     );
   }
 }
@@ -322,182 +333,214 @@ class _TimerControlsState extends ConsumerState<_TimerControls> {
   void _pause() => ref.read(timerProvider.notifier).pause();
   void _resume() => ref.read(timerProvider.notifier).resume();
 
-  Future<void> _stop(BuildContext context) async {
-    setState(() => _loading = true);
-
-    // Capturer les refs avant l'opération async (FIX 6)
+  void _stop(BuildContext context) {
+    // Capture les refs synchrones avant le stop
     final messenger = ScaffoldMessenger.of(context);
     final router = GoRouter.of(context);
+    final projectId = ref.read(timerProvider).selectedProjectId;
 
-    try {
-      // Capture avant le stop
-      final projectId = ref.read(timerProvider).selectedProjectId;
-      final totalSecs = ref.read(timerProvider).totalWorked.inSeconds;
+    // Stop synchrone — état local réinitialisé immédiatement
+    final result = ref.read(timerProvider.notifier).stop();
+    if (result == null) return;
 
-      final (session, workedSecs) =
-          await ref.read(timerProvider.notifier).stop();
+    // Invalidation cache sessions + totaux
+    if (projectId != null) {
+      ref.invalidate(sessionsByProjectProvider(projectId));
+    }
+    ref.invalidate(projectsTotalSecondsProvider);
 
-      // Invalidation cache sessions
-      if (projectId != null) {
-        ref.invalidate(sessionsByProjectProvider(projectId));
-      }
+    final secs = result.totalSecs;
+    final project = ref.read(projectsProvider).valueOrNull
+        ?.where((p) => p.id == projectId)
+        .firstOrNull;
+    final clientId = project?.clientId;
 
-      if (session != null) {
-        final project = ref.read(projectsProvider).valueOrNull
-            ?.where((p) => p.id == projectId)
-            .firstOrNull;
-        final clientId = project?.clientId;
+    // Durée HH:MM:SS
+    final h = (secs ~/ 3600).toString().padLeft(2, '0');
+    final m = ((secs % 3600) ~/ 60).toString().padLeft(2, '0');
+    final s = (secs % 60).toString().padLeft(2, '0');
+    final durationStr = '$h:$m:$s';
 
-        final secs = workedSecs > 0 ? workedSecs : totalSecs;
+    // Ligne 1 — "Ven. 11 avr. · 18:17 → 18:17"
+    final startStr =
+        DateFormat('HH:mm').format(result.startedAt.toLocal());
+    final endStr =
+        DateFormat('HH:mm').format(result.endedAt.toLocal());
+    final dateStr =
+        DateFormat('d MMM', 'fr_FR').format(result.startedAt.toLocal());
+    final dayRaw =
+        DateFormat('EEE', 'fr_FR').format(result.startedAt.toLocal());
+    // "ven." → "Ven" — capitalize + retire le point final
+    final dayTrimmed = dayRaw.endsWith('.') ? dayRaw.substring(0, dayRaw.length - 1) : dayRaw;
+    final dayStr = dayTrimmed.isNotEmpty
+        ? '${dayTrimmed[0].toUpperCase()}${dayTrimmed.substring(1)}'
+        : dayTrimmed;
+    final line1 = '$dayStr $dateStr · $startStr → $endStr';
 
-        // Durée HH:MM:SS
-        final h = (secs ~/ 3600).toString().padLeft(2, '0');
-        final m = ((secs % 3600) ~/ 60).toString().padLeft(2, '0');
-        final s = (secs % 60).toString().padLeft(2, '0');
-        final durationStr = '$h:$m:$s';
+    // Montant
+    final amount = (secs / 3600.0) * (project?.hourlyRate ?? 0);
+    final currency = project?.currency ?? 'EUR';
+    final symbol = const {
+      'EUR': '€',
+      'USD': '\$',
+      'GBP': '£',
+      'CHF': 'CHF',
+    }[currency] ??
+        currency;
+    final amountStr = amount.toStringAsFixed(2).replaceAll('.', ',');
 
-        // Ligne 1 — "Ven. 11 avr. · 18:17 → 18:17"
-        final startStr =
-            DateFormat('HH:mm').format(session.startedAt.toLocal());
-        final endStr = session.endedAt != null
-            ? DateFormat('HH:mm').format(session.endedAt!.toLocal())
-            : '—';
-        final dateStr =
-            DateFormat('d MMM', 'fr_FR').format(session.startedAt.toLocal());
-        final dayRaw =
-            DateFormat('EEE', 'fr_FR').format(session.startedAt.toLocal());
-        // Capitalize first letter: "ven." → "Ven."
-        final dayStr = dayRaw.isNotEmpty
-            ? '${dayRaw[0].toUpperCase()}${dayRaw.substring(1)}'
-            : dayRaw;
-        final line1 = '$dayStr $dateStr · $startStr → $endStr';
+    final sessionId = result.sessionId;
 
-        // Montant
-        final amount = (secs / 3600.0) * (project?.hourlyRate ?? 0);
-        final currency = project?.currency ?? 'EUR';
-        final symbol = const {
-          'EUR': '€',
-          'USD': '\$',
-          'GBP': '£',
-          'CHF': 'CHF',
-        }[currency] ??
-            currency;
-        final amountStr = amount.toStringAsFixed(2).replaceAll('.', ',');
-
-        final sessionId = session.id;
-
-        messenger
-          ..clearSnackBars()
-          ..showSnackBar(
-            SnackBar(
-              duration: const Duration(days: 365),
-              dismissDirection: DismissDirection.horizontal,
-              behavior: SnackBarBehavior.floating,
-              backgroundColor: const Color(0xFF16A34A),
-              padding: EdgeInsets.zero,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
-              content: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () {
-                  messenger.hideCurrentSnackBar();
-                  if (clientId != null && projectId != null) {
-                    router.push(
-                      '/clients/$clientId/projects/$projectId/sessions',
-                      extra: sessionId,
-                    );
-                  }
-                },
-                child: IntrinsicHeight(
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Expanded(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 12),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.start,
+    messenger.clearSnackBars();
+    final controller = messenger.showSnackBar(
+        SnackBar(
+          duration: const Duration(days: 365),
+          dismissDirection: DismissDirection.horizontal,
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: AppColors.primary,
+          padding: EdgeInsets.zero,
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12)),
+          content: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () {
+              messenger.hideCurrentSnackBar();
+              if (clientId != null && projectId != null) {
+                router.push(
+                  '/clients/$clientId/projects/$projectId/sessions',
+                  extra: sessionId,
+                );
+              }
+            },
+            child: IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 12),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Ligne 1 — "Ven. 11 avr. · 18:17 → 18:17"
+                          Text(
+                            line1,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white,
+                              height: 1.3,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 4),
+                          // Ligne 2 — "00:00:16  ·  0,14 €"
+                          Row(
                             children: [
-                              // Ligne 1 — "Ven. 11 avr. · 18:17 → 18:17"
                               Text(
-                                line1,
+                                durationStr,
                                 style: const TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w700,
+                                  fontSize: 13,
                                   color: Colors.white,
                                   height: 1.3,
                                 ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
                               ),
-                              const SizedBox(height: 4),
-                              // Ligne 2 — durée (gauche) · montant (droite)
-                              Row(
-                                children: [
-                                  Text(
-                                    durationStr,
-                                    style: const TextStyle(
-                                      fontSize: 13,
-                                      color: Colors.white,
-                                      height: 1.3,
-                                    ),
-                                  ),
-                                  const Spacer(),
-                                  Text(
-                                    '$amountStr $symbol',
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      color: Colors.white.withAlpha(178),
-                                      height: 1.3,
-                                    ),
-                                  ),
-                                ],
+                              const Spacer(),
+                              Text(
+                                '$amountStr $symbol',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: Colors.white.withAlpha(200),
+                                  height: 1.3,
+                                ),
                               ),
                             ],
                           ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  // Chevron — zone avec fond semi-opaque, coins droits arrondis
+                  if (clientId != null)
+                    Container(
+                      width: 40,
+                      decoration: const BoxDecoration(
+                        color: Color(0x26FFFFFF), // blanc 15 %
+                        borderRadius: BorderRadius.only(
+                          topRight: Radius.circular(12),
+                          bottomRight: Radius.circular(12),
                         ),
                       ),
-                      // Chevron — zone avec fond semi-opaque, coins droits arrondis
-                      if (clientId != null)
-                        Container(
-                          width: 40,
-                          decoration: const BoxDecoration(
-                            color: Color(0x26FFFFFF), // blanc 15 %
-                            borderRadius: BorderRadius.only(
-                              topRight: Radius.circular(12),
-                              bottomRight: Radius.circular(12),
-                            ),
-                          ),
-                          child: const Icon(
-                            Icons.chevron_right,
-                            color: Colors.white,
-                            size: 22,
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
+                      child: const Icon(
+                        Icons.chevron_right,
+                        color: Colors.white,
+                        size: 22,
+                      ),
+                    ),
+                ],
               ),
             ),
-          );
+          ),
+        ),
+      );
+    // Après dismiss (swipe ou tap chevron), confirmer l'ajout
+    controller.closed.then((reason) {
+      if (reason == SnackBarClosedReason.swipe ||
+          reason == SnackBarClosedReason.dismiss) {
+        messenger.showSnackBar(
+          SnackBar(
+            content: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () {
+                messenger.hideCurrentSnackBar();
+                if (clientId != null && projectId != null) {
+                  router.push(
+                    '/clients/$clientId/projects/$projectId/sessions',
+                  );
+                }
+              },
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.arrow_forward,
+                      size: 14, color: Colors.white),
+                  SizedBox(width: 6),
+                  Text(
+                    'Session ajoutée au projet ✓',
+                    style: TextStyle(
+                      color: Colors.white,
+                      decoration: TextDecoration.underline,
+                      decorationColor: Colors.white,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 2),
+          ),
+        );
       }
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    // ── Idle ────────────────────────────────────────────────────────────
+    // ── Idle — un seul bouton ElevatedButton plein ──────────────────────
     if (!widget.isRunning && !widget.isPaused) {
-      return FilledButton.icon(
+      return ElevatedButton.icon(
         onPressed: (widget.hasProject && !_loading) ? _start : null,
-        style: FilledButton.styleFrom(
-          minimumSize: const Size(double.infinity, 64),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: AppColors.primary,
+          foregroundColor: Colors.white,
+          disabledBackgroundColor: AppColors.primary.withAlpha(80),
+          disabledForegroundColor: Colors.white60,
+          minimumSize: const Size(double.infinity, 60),
           shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16)),
+              borderRadius: BorderRadius.circular(14)),
         ),
         icon: _loading
             ? const SizedBox(
@@ -505,66 +548,87 @@ class _TimerControlsState extends ConsumerState<_TimerControls> {
                 height: 22,
                 child: CircularProgressIndicator(
                     strokeWidth: 2, color: Colors.white))
-            : const Icon(Icons.play_arrow_rounded, size: 30),
+            : const Icon(Icons.play_arrow, size: 26),
         label: const Text('Démarrer',
-            style:
-                TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
       );
     }
 
-    // ── Running ou Paused — deux boutons ────────────────────────────────
+    // ── Running — Pause (primary) + Terminer (outlined danger) ─────────
+    if (widget.isRunning) {
+      return Row(
+        children: [
+          Expanded(
+            child: ElevatedButton.icon(
+              onPressed: _pause,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+                minimumSize: const Size(0, 56),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14)),
+              ),
+              icon: const Icon(Icons.pause, size: 22),
+              label: const Text('Pause',
+                  style: TextStyle(
+                      fontSize: 15, fontWeight: FontWeight.w700)),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: () => _stop(context),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.danger,
+                side: const BorderSide(color: AppColors.danger),
+                minimumSize: const Size(0, 56),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14)),
+              ),
+              icon: const Icon(Icons.stop, size: 22),
+              label: const Text('Terminer',
+                  style: TextStyle(
+                      fontSize: 15, fontWeight: FontWeight.w700)),
+            ),
+          ),
+        ],
+      );
+    }
+
+    // ── Paused — Reprendre (primary) + Terminer (outlined danger) ──────
     return Row(
       children: [
-        // Pause / Reprendre
         Expanded(
-          child: FilledButton.icon(
-            onPressed: _loading
-                ? null
-                : (widget.isRunning ? _pause : _resume),
-            style: FilledButton.styleFrom(
-              backgroundColor: widget.isRunning
-                  ? const Color(0xFFF59E0B) // orange = pause
-                  : const Color(0xFF16A34A), // vert = reprendre
-              minimumSize: const Size(0, 60),
+          child: ElevatedButton.icon(
+            onPressed: _resume,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+              minimumSize: const Size(0, 56),
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(14)),
             ),
-            icon: Icon(
-              widget.isRunning
-                  ? Icons.pause_rounded
-                  : Icons.play_arrow_rounded,
-              size: 26,
-            ),
-            label: Text(
-              widget.isRunning ? 'Pause' : 'Reprendre',
-              style: const TextStyle(
-                  fontSize: 16, fontWeight: FontWeight.w700),
-            ),
+            icon: const Icon(Icons.play_arrow, size: 22),
+            label: const Text('Reprendre',
+                style: TextStyle(
+                    fontSize: 15, fontWeight: FontWeight.w700)),
           ),
         ),
         const SizedBox(width: 12),
-        // Terminer
         Expanded(
-          child: FilledButton.icon(
-            onPressed: (widget.hasProject && !_loading)
-                ? () => _stop(context)
-                : null,
-            style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFFDC2626),
-              minimumSize: const Size(0, 60),
+          child: OutlinedButton.icon(
+            onPressed: () => _stop(context),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.danger,
+              side: const BorderSide(color: AppColors.danger),
+              minimumSize: const Size(0, 56),
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(14)),
             ),
-            icon: _loading
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                        strokeWidth: 2, color: Colors.white))
-                : const Icon(Icons.stop_rounded, size: 26),
+            icon: const Icon(Icons.stop, size: 22),
             label: const Text('Terminer',
                 style: TextStyle(
-                    fontSize: 16, fontWeight: FontWeight.w700)),
+                    fontSize: 15, fontWeight: FontWeight.w700)),
           ),
         ),
       ],

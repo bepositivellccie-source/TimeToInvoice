@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/models/client.dart';
@@ -58,32 +59,6 @@ class _ClientsScreenState extends ConsumerState<ClientsScreen> {
       backgroundColor: Colors.transparent,
       builder: (_) => ClientFormSheet(existing: existing),
     );
-  }
-
-  Future<void> _confirmDelete(Client client) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Supprimer ce client ?'),
-        content: Text(
-          '${client.displayName} sera supprimé ainsi que tous ses projets et sessions.',
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Annuler')),
-          FilledButton(
-            style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFFDC2626)),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Supprimer'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed == true && mounted) {
-      await ref.read(clientsProvider.notifier).delete(client.id);
-    }
   }
 
   @override
@@ -168,8 +143,8 @@ class _ClientsScreenState extends ConsumerState<ClientsScreen> {
             tiles.add(_ClientTile(
               key: key,
               client: c,
-              onEdit: () => _openForm(context, c),
-              onDelete: () => _confirmDelete(c),
+              onDelete: () =>
+                  ref.read(clientsProvider.notifier).delete(c.id),
             ));
           }
 
@@ -307,107 +282,353 @@ class _AlphaIndex extends StatelessWidget {
   }
 }
 
-// ─── Tile ─────────────────────────────────────────────────────────────────────
+// ─── Tile — swipe bidirectionnel : droite = supprimer, gauche = modifier ─────
 
-class _ClientTile extends ConsumerWidget {
+class _ClientTile extends ConsumerStatefulWidget {
   final Client client;
-  final VoidCallback onEdit;
   final VoidCallback onDelete;
 
   const _ClientTile({
     super.key,
     required this.client,
-    required this.onEdit,
     required this.onDelete,
   });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_ClientTile> createState() => _ClientTileState();
+}
+
+/// Icône double flèche qui apparaît brièvement au toggle.
+const _kToggleArrowDuration = Duration(milliseconds: 800);
+
+class _ClientTileState extends ConsumerState<_ClientTile>
+    with TickerProviderStateMixin {
+  static const _deleteRevealWidth = 72.0;
+
+  /// Positive = décalé vers la droite (fond rouge, supprimer).
+  /// Négatif = décalé vers la gauche (navigation fiche client).
+  double _dragOffset = 0;
+  bool _navigating = false;
+  bool _showToggleArrow = false;
+
+  late final AnimationController _slideOutCtrl;
+  VoidCallback? _slideOutListener;
+
+  @override
+  void initState() {
+    super.initState();
+    _slideOutCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 250),
+    );
+  }
+
+  @override
+  void dispose() {
+    _removeSlideOutListener();
+    _slideOutCtrl.dispose();
+    super.dispose();
+  }
+
+  void _removeSlideOutListener() {
+    if (_slideOutListener != null) {
+      _slideOutCtrl.removeListener(_slideOutListener!);
+      _slideOutListener = null;
+    }
+  }
+
+  void _onToggleTap() {
+    ref.read(clientDisplayModeProvider.notifier).toggle();
+    setState(() => _showToggleArrow = true);
+    Future.delayed(_kToggleArrowDuration, () {
+      if (mounted) setState(() => _showToggleArrow = false);
+    });
+  }
+
+  void _resetPosition() => setState(() => _dragOffset = 0);
+
+  Future<void> _showDeleteDialog() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Supprimer ce client ?'),
+        content: Text(
+          '${widget.client.displayName} sera supprimé ainsi que tous ses projets et sessions.',
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Annuler')),
+          FilledButton(
+            style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFFDC2626)),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Supprimer'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+    if (confirmed == true) {
+      widget.onDelete();
+    } else {
+      _resetPosition();
+    }
+  }
+
+  /// Swipe gauche complet → slide la tile hors écran puis navigate.
+  void _slideOutAndNavigate() {
+    if (_navigating) return;
+    _navigating = true;
+
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final startOffset = _dragOffset;
+    final endOffset = -screenWidth;
+
+    // Retirer l'ancien listener avant d'en ajouter un nouveau
+    _removeSlideOutListener();
+    _slideOutListener = () {
+      if (!mounted) return;
+      setState(() {
+        _dragOffset = startOffset +
+            (endOffset - startOffset) * Curves.easeIn.transform(_slideOutCtrl.value);
+      });
+    };
+    _slideOutCtrl.addListener(_slideOutListener!);
+
+    _slideOutCtrl.forward(from: 0).then((_) {
+      if (!mounted) return;
+      context.push('/clients/${widget.client.id}').then((_) {
+        // Retour de la fiche → retirer le listener AVANT reset
+        if (mounted) {
+          _removeSlideOutListener();
+          _navigating = false;
+          _slideOutCtrl.reset();
+          setState(() => _dragOffset = 0);
+        }
+      });
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final mode = ref.watch(clientDisplayModeProvider);
-    final label = client.labelWith(mode);
-    final subtitle = client.subtitleWith(mode);
+    final label = widget.client.labelWith(mode);
+    final subtitle = widget.client.subtitleWith(mode);
+    final isCompanyMode = mode == 'company';
 
-    final initials = label
-        .trim()
-        .split(' ')
-        .take(2)
-        .map((w) => w.isEmpty ? '' : w[0].toUpperCase())
-        .join();
+    final screenWidth = MediaQuery.sizeOf(context).width;
 
-    return Card(
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: () => context.go('/clients/${client.id}'),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          child: Row(
-            children: [
-              CircleAvatar(
-                backgroundColor:
-                    Theme.of(context).colorScheme.primaryContainer,
-                child: Text(
-                  initials,
-                  style: TextStyle(
-                    color: Theme.of(context)
-                        .colorScheme
-                        .onPrimaryContainer,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 14,
-                  ),
-                ),
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(16),
+      child: Stack(
+        children: [
+          // ── Fond contextuel : rouge (droite) ou vert (gauche) ──────
+          Positioned.fill(
+            child: Container(
+              decoration: BoxDecoration(
+                color: _dragOffset >= 0
+                    ? const Color(0xFFDC2626)
+                    : const Color(0xFF16A34A),
+                borderRadius: BorderRadius.circular(16),
               ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () => ref
-                      .read(clientDisplayModeProvider.notifier)
-                      .toggle(),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 150),
-                        transitionBuilder: (child, animation) =>
-                            FadeTransition(opacity: animation, child: child),
-                        layoutBuilder: (currentChild, previousChildren) =>
-                            Stack(
-                          alignment: Alignment.centerLeft,
-                          children: [
-                            ...previousChildren,
-                            ?currentChild,
-                          ],
-                        ),
-                        child: Text(
-                          label,
-                          key: ValueKey(label),
-                          style: const TextStyle(
-                              fontWeight: FontWeight.w600, fontSize: 15),
+              alignment:
+                  _dragOffset >= 0 ? Alignment.centerLeft : Alignment.centerRight,
+              child: _dragOffset >= 0
+                  ? GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: _showDeleteDialog,
+                      child: const SizedBox(
+                        width: _deleteRevealWidth,
+                        child: Center(
+                          child: Icon(Icons.delete_outline,
+                              color: Colors.white, size: 26),
                         ),
                       ),
-                      if (subtitle.isNotEmpty) ...[
-                        const SizedBox(height: 2),
-                        Text(subtitle,
-                            style: const TextStyle(
-                                fontSize: 13, color: Color(0xFF6B7280))),
+                    )
+                  : const Padding(
+                      padding: EdgeInsets.only(right: 24),
+                      child: Icon(
+                        Icons.person_outline,
+                        color: Colors.white,
+                        size: 24,
+                      ),
+                    ),
+            ),
+          ),
+          // ── Card glissante ─────────────────────────────────────────
+          AnimatedContainer(
+            duration: Duration(
+                milliseconds: !_navigating &&
+                        (_dragOffset == 0 || _dragOffset == _deleteRevealWidth)
+                    ? 200
+                    : 0),
+            curve: Curves.easeOut,
+            transform: Matrix4.translationValues(_dragOffset, 0, 0),
+            child: GestureDetector(
+              onHorizontalDragUpdate: (details) {
+                if (_navigating) return;
+                setState(() {
+                  _dragOffset = (_dragOffset + details.delta.dx)
+                      .clamp(-screenWidth, _deleteRevealWidth);
+                });
+              },
+              onHorizontalDragEnd: (details) {
+                if (_navigating) return;
+                final velocity = details.primaryVelocity ?? 0;
+
+                // Swipe droite → snap révèle supprimer
+                if (_dragOffset > 0) {
+                  if (_dragOffset > _deleteRevealWidth * 0.4 || velocity > 300) {
+                    setState(() => _dragOffset = _deleteRevealWidth);
+                  } else {
+                    _resetPosition();
+                  }
+                  return;
+                }
+
+                // Swipe gauche → seuil 30% ou vélocité rapide → navigate
+                if (_dragOffset < -screenWidth * 0.30 || velocity < -800) {
+                  _slideOutAndNavigate();
+                } else {
+                  _resetPosition();
+                }
+              },
+              child: Card(
+                margin: EdgeInsets.zero,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(16),
+                  onTap: () => context.go('/clients/${widget.client.id}'),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 12),
+                    child: Row(
+                      children: [
+                        // ── Avatar toggle (tap = switch mode) ─────────
+                        GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: _onToggleTap,
+                          child: Stack(
+                            alignment: Alignment.center,
+                            children: [
+                              AnimatedContainer(
+                                duration: const Duration(milliseconds: 250),
+                                width: 44,
+                                height: 44,
+                                decoration: BoxDecoration(
+                                  color: isCompanyMode
+                                      ? Theme.of(context).colorScheme.primary.withAlpha(20)
+                                      : const Color(0xFFF3F4F6),
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: isCompanyMode
+                                        ? Theme.of(context).colorScheme.primary.withAlpha(60)
+                                        : const Color(0xFFE5E7EB),
+                                    width: 1.5,
+                                  ),
+                                ),
+                                child: Center(
+                                  child: AnimatedSwitcher(
+                                    duration: const Duration(milliseconds: 200),
+                                    child: SvgPicture.asset(
+                                      isCompanyMode
+                                          ? 'assets/entreprise.svg'
+                                          : 'assets/client.svg',
+                                      key: ValueKey(isCompanyMode),
+                                      width: 20,
+                                      height: 20,
+                                      colorFilter: ColorFilter.mode(
+                                        isCompanyMode
+                                            ? Theme.of(context).colorScheme.primary
+                                            : const Color(0xFF6B7280),
+                                        BlendMode.srcIn,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              // ── Double flèche toggle ──────────
+                              AnimatedOpacity(
+                                opacity: _showToggleArrow ? 1.0 : 0.0,
+                                duration: Duration(
+                                    milliseconds:
+                                        _showToggleArrow ? 100 : 400),
+                                child: Container(
+                                  width: 44,
+                                  height: 44,
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withAlpha(200),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(
+                                    Icons.swap_vert,
+                                    size: 18,
+                                    color: Color(0xFF374151),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 14),
+                        // ── Nom + sous-titre (tap = ouvre fiche) ──────
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Flexible(
+                                    child: AnimatedSwitcher(
+                                      duration:
+                                          const Duration(milliseconds: 150),
+                                      transitionBuilder:
+                                          (child, animation) => FadeTransition(
+                                              opacity: animation,
+                                              child: child),
+                                      layoutBuilder:
+                                          (currentChild, previousChildren) =>
+                                              Stack(
+                                        alignment: Alignment.centerLeft,
+                                        children: [
+                                          ...previousChildren,
+                                          ?currentChild,
+                                        ],
+                                      ),
+                                      child: Text(
+                                        label,
+                                        key: ValueKey(label),
+                                        style: const TextStyle(
+                                            fontWeight: FontWeight.w600,
+                                            fontSize: 15),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              if (subtitle.isNotEmpty) ...[
+                                const SizedBox(height: 2),
+                                Text(subtitle,
+                                    style: const TextStyle(
+                                        fontSize: 13,
+                                        color: Color(0xFF6B7280))),
+                              ],
+                            ],
+                          ),
+                        ),
+                        const Icon(Icons.chevron_right,
+                            size: 20, color: Color(0xFF9CA3AF)),
                       ],
-                    ],
+                    ),
                   ),
                 ),
               ),
-              IconButton(
-                icon: const Icon(Icons.edit_outlined, size: 20),
-                color: const Color(0xFF6B7280),
-                onPressed: onEdit,
-              ),
-              IconButton(
-                icon: const Icon(Icons.delete_outline, size: 20),
-                color: const Color(0xFFDC2626),
-                onPressed: onDelete,
-              ),
-            ],
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
@@ -595,9 +816,9 @@ class _ClientFormSheetState extends ConsumerState<ClientFormSheet> {
     return Container(
       constraints:
           BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.92),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
