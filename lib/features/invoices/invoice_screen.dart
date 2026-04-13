@@ -84,7 +84,7 @@ class _InvoiceScreenState extends ConsumerState<InvoiceScreen> {
   ) {
     return sessions
         .where((s) => _selected.contains(s.id))
-        .fold(0.0, (sum, s) => sum + ((s.durationMinutes ?? 0) / 60.0) * hourlyRate);
+        .fold(0.0, (sum, s) => sum + (s.workedSeconds / 3600.0) * hourlyRate);
   }
 
   // ─── Construction InvoiceData ─────────────────────────────────────────────
@@ -106,7 +106,7 @@ class _InvoiceScreenState extends ConsumerState<InvoiceScreen> {
           ..sort((a, b) => a.startedAt.compareTo(b.startedAt));
 
     final lines = selectedSessions.map((s) {
-      final hours = (s.durationMinutes ?? 0) / 60.0;
+      final hours = s.workedSeconds / 3600.0;
       final desc = StringBuffer(
           'Prestation du ${dateFmt.format(s.startedAt.toLocal())}');
       if (s.notes != null && s.notes!.isNotEmpty) {
@@ -540,7 +540,7 @@ class _SessionCheckTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final hours = (session.durationMinutes ?? 0) / 60.0;
+    final hours = session.workedSeconds / 3600.0;
     final amount = hours * hourlyRate;
     final dateFmt = DateFormat('dd/MM/yyyy', 'fr_FR');
     final euroFmt = NumberFormat.currency(
@@ -617,22 +617,32 @@ class _TotalCard extends StatelessWidget {
             children: [
               const Text('Total HT',
                   style: TextStyle(color: Colors.white70, fontSize: 13)),
-              Text(euroFmt.format(total),
-                  style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 26,
-                      fontWeight: FontWeight.w800)),
+              Flexible(
+                child: Text(euroFmt.format(total),
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 26,
+                        fontWeight: FontWeight.w800),
+                    textAlign: TextAlign.right,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis),
+              ),
             ],
           ),
           const SizedBox(height: 4),
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('$sessionCount session(s) sélectionnée(s)',
+              Text('$sessionCount session(s)',
                   style: const TextStyle(
                       color: Colors.white60, fontSize: 11)),
-              const Text('TVA non applicable — art. 293 B CGI',
-                  style: TextStyle(color: Colors.white60, fontSize: 10)),
+              const Spacer(),
+              const Flexible(
+                child: Text('TVA non applicable — art. 293 B CGI',
+                    style: TextStyle(color: Colors.white60, fontSize: 10),
+                    textAlign: TextAlign.right,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis),
+              ),
             ],
           ),
         ],
@@ -658,8 +668,9 @@ class _ActionBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final bottomPadding = MediaQuery.of(context).padding.bottom;
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      padding: EdgeInsets.fromLTRB(16, 12, 16, 16 + bottomPadding),
       decoration: BoxDecoration(
         color: Colors.white,
         boxShadow: [
