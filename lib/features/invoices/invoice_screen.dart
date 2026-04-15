@@ -1,7 +1,10 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:printing/printing.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -14,6 +17,7 @@ import '../../core/providers/projects_provider.dart';
 import '../../core/providers/sessions_provider.dart';
 import '../../core/utils/invoice_number.dart';
 import '../../core/utils/invoice_pdf.dart';
+import '../../core/utils/paywall_gate.dart';
 
 class InvoiceScreen extends ConsumerStatefulWidget {
   final String projectId;
@@ -54,16 +58,18 @@ class _InvoiceScreenState extends ConsumerState<InvoiceScreen> {
   // ─── Sauvegarde profil vendeur dans la table profiles ────────────────────
 
   Future<void> _saveSellerProfile() async {
+    final existing = ref.read(profileProvider).valueOrNull;
     await ref.read(profileProvider.notifier).save(Profile(
           displayName: _sellerNameCtrl.text.trim().isEmpty
               ? null
               : _sellerNameCtrl.text.trim(),
-          address: _sellerAddressCtrl.text.trim().isEmpty
-              ? null
-              : _sellerAddressCtrl.text.trim(),
+          street: existing?.street,
+          zipCode: existing?.zipCode,
+          city: existing?.city,
           siret: _sellerSiretCtrl.text.trim().isEmpty
               ? null
               : _sellerSiretCtrl.text.trim(),
+          tvaNumber: existing?.tvaNumber,
         ));
   }
 
@@ -132,6 +138,7 @@ class _InvoiceScreenState extends ConsumerState<InvoiceScreen> {
       sellerSiret: _sellerSiretCtrl.text.trim().isEmpty
           ? null
           : _sellerSiretCtrl.text.trim(),
+      sellerVatNumber: ref.read(profileProvider).valueOrNull?.tvaNumber,
       buyerName: buyerName,
       buyerAddress: buyerAddress,
       buyerSiret: buyerSiret,
@@ -198,6 +205,9 @@ class _InvoiceScreenState extends ConsumerState<InvoiceScreen> {
     String? buyerSiret,
     String? buyerEmail,
   }) async {
+    // Vérifier le quota freemium avant de générer
+    if (!await checkInvoiceQuota(context, ref)) return;
+
     setState(() => _generating = true);
     try {
       await _saveSellerProfile();
@@ -220,13 +230,37 @@ class _InvoiceScreenState extends ConsumerState<InvoiceScreen> {
 
       final bytes = await buildInvoicePdf(data);
 
+      // Sauvegarde locale du PDF pour renvoi ultérieur
+      final dir = await getApplicationDocumentsDirectory();
+      final file = File('${dir.path}/Facture_$invoiceNumber.pdf');
+      await file.writeAsBytes(bytes);
+
+      final userId = supabase.auth.currentUser!.id;
+      final clientName = buyerName;
+      final now = DateTime.now();
+
+      // Upload PDF dans Supabase Storage
+      final storagePath = '$userId/$invoiceNumber.pdf';
+      await supabase.storage.from('invoices').uploadBinary(
+            storagePath,
+            bytes,
+            fileOptions: const FileOptions(
+              contentType: 'application/pdf',
+              upsert: true,
+            ),
+          );
+
       // Insert en DB
       await supabase.from('invoices').insert({
-        'user_id': supabase.auth.currentUser!.id,
+        'user_id': userId,
         'client_id': clientId,
         'invoice_number': invoiceNumber,
         'total_amount': data.totalTTC,
         'status': 'draft',
+        'pdf_path': storagePath,
+        'issued_at': now.toIso8601String(),
+        'due_at': now.add(const Duration(days: 30)).toIso8601String(),
+        'client_name': clientName,
       });
 
       // Partage natif (email, AirDrop, Drive, etc.)
@@ -261,7 +295,7 @@ class _InvoiceScreenState extends ConsumerState<InvoiceScreen> {
         final p = next.valueOrNull!;
         setState(() {
           _sellerNameCtrl.text = p.displayName ?? '';
-          _sellerAddressCtrl.text = p.address ?? '';
+          _sellerAddressCtrl.text = p.fullAddress ?? '';
           _sellerSiretCtrl.text = p.siret ?? '';
           _profileLoaded = true;
         });
@@ -272,7 +306,7 @@ class _InvoiceScreenState extends ConsumerState<InvoiceScreen> {
       final cached = ref.read(profileProvider).valueOrNull;
       if (cached != null) {
         _sellerNameCtrl.text = cached.displayName ?? '';
-        _sellerAddressCtrl.text = cached.address ?? '';
+        _sellerAddressCtrl.text = cached.fullAddress ?? '';
         _sellerSiretCtrl.text = cached.siret ?? '';
         _profileLoaded = true;
       } else if (!ref.read(profileProvider).isLoading) {
@@ -377,7 +411,7 @@ class _InvoiceScreenState extends ConsumerState<InvoiceScreen> {
                         hourlyRate,
                         currency,
                         client?.name ?? 'Client',
-                        buyerAddress: client?.address,
+                        buyerAddress: client?.fullAddress,
                         buyerSiret: client?.siret,
                         buyerEmail: client?.email,
                       ),
@@ -388,7 +422,7 @@ class _InvoiceScreenState extends ConsumerState<InvoiceScreen> {
                         hourlyRate: hourlyRate,
                         currency: currency,
                         buyerName: client?.name ?? 'Client',
-                        buyerAddress: client?.address,
+                        buyerAddress: client?.fullAddress,
                         buyerSiret: client?.siret,
                         buyerEmail: client?.email,
                       ),

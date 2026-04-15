@@ -5,7 +5,9 @@ class Client {
   final String? firstName; // Prénom
   final String? company;   // Entreprise
   final String? siret;
-  final String? address;
+  final String? street;
+  final String? zipCode;
+  final String? city;
   final String? phone;
   final String? whatsapp;
   final String? email;
@@ -18,7 +20,9 @@ class Client {
     this.firstName,
     this.company,
     this.siret,
-    this.address,
+    this.street,
+    this.zipCode,
+    this.city,
     this.phone,
     this.whatsapp,
     this.email,
@@ -67,6 +71,14 @@ class Client {
     return fullPersonName;
   }
 
+  /// Adresse concaténée : "rue, code postal ville"
+  String? get fullAddress {
+    final s = street ?? '';
+    final cityPart = '${zipCode ?? ''} ${city ?? ''}'.trim();
+    final parts = [if (s.isNotEmpty) s, if (cityPart.isNotEmpty) cityPart];
+    return parts.isEmpty ? null : parts.join(', ');
+  }
+
   /// Nom civil — "Prénom Nom" ou juste "Nom"
   String get fullPersonName =>
       (firstName != null && firstName!.isNotEmpty) ? '$firstName $name' : name;
@@ -78,7 +90,9 @@ class Client {
         firstName: json['first_name'] as String?,
         company: json['company'] as String?,
         siret: json['siret'] as String?,
-        address: json['address'] as String?,
+        street: json['street'] as String?,
+        zipCode: json['zip_code'] as String?,
+        city: json['city'] as String?,
         phone: json['phone'] as String?,
         whatsapp: json['whatsapp'] as String?,
         email: json['email'] as String?,
@@ -92,7 +106,9 @@ class Client {
         if (firstName != null) 'first_name': firstName,
         if (company != null) 'company': company,
         if (siret != null) 'siret': siret,
-        if (address != null) 'address': address,
+        if (street != null) 'street': street,
+        if (zipCode != null) 'zip_code': zipCode,
+        if (city != null) 'city': city,
         if (phone != null) 'phone': phone,
         if (whatsapp != null) 'whatsapp': whatsapp,
         if (email != null) 'email': email,

@@ -1,6 +1,13 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/models/invoice.dart';
 import '../../core/providers/invoices_provider.dart';
@@ -19,6 +26,27 @@ class _InvoicesHistoryScreenState
   /// null = tous les mois
   DateTime? _filterMonth;
 
+  /// null = tous les statuts, 'sent' | 'overdue' | 'paid'
+  String? _filterStatus;
+
+  final TextEditingController _searchCtrl = TextEditingController();
+  String _searchQuery = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _searchCtrl.addListener(() {
+      final q = _searchCtrl.text.trim().toLowerCase();
+      if (q != _searchQuery) setState(() => _searchQuery = q);
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     final invoicesAsync = ref.watch(invoicesProvider);
@@ -34,17 +62,85 @@ class _InvoicesHistoryScreenState
           // Mois disponibles pour le filtre
           final months = _availableMonths(invoices);
 
-          // Filtre par mois
-          final displayed = _filterMonth == null
-              ? invoices
-              : invoices.where((inv) {
-                  final d = inv.createdAt.toLocal();
-                  return d.year == _filterMonth!.year &&
-                      d.month == _filterMonth!.month;
-                }).toList();
+          // Filtre combiné : recherche + statut + mois
+          final displayed = invoices.where((inv) {
+            // Filtre recherche
+            if (_searchQuery.isNotEmpty) {
+              final name = (inv.clientName ?? '').toLowerCase();
+              if (!name.contains(_searchQuery)) {
+                return false;
+              }
+            }
+            // Filtre statut
+            if (_filterStatus == 'sent' &&
+                !(inv.status == 'sent' && !inv.isOverdue)) {
+              return false;
+            }
+            if (_filterStatus == 'overdue' && !inv.isOverdue) {
+              return false;
+            }
+            if (_filterStatus == 'paid' && inv.status != 'paid') {
+              return false;
+            }
+            // Filtre mois
+            if (_filterMonth != null) {
+              final d = inv.createdAt.toLocal();
+              if (d.year != _filterMonth!.year ||
+                  d.month != _filterMonth!.month) {
+                return false;
+              }
+            }
+            return true;
+          }).toList();
+
+          // Regrouper par mois
+          final grouped = _groupByMonth(displayed);
 
           return Column(
             children: [
+              // ── Barre de recherche ─────────────────────────────
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                child: TextField(
+                  controller: _searchCtrl,
+                  decoration: InputDecoration(
+                    hintText: 'Rechercher un client…',
+                    hintStyle: const TextStyle(
+                      fontSize: 14,
+                      color: Color(0xFFBDBDBD),
+                    ),
+                    prefixIcon: const Icon(LucideIcons.search,
+                        size: 18, color: Color(0xFF9CA3AF)),
+                    suffixIcon: _searchQuery.isNotEmpty
+                        ? GestureDetector(
+                            onTap: () => _searchCtrl.clear(),
+                            child: const Icon(LucideIcons.x,
+                                size: 16, color: Color(0xFF9CA3AF)),
+                          )
+                        : null,
+                    filled: true,
+                    fillColor: Theme.of(context).brightness ==
+                            Brightness.dark
+                        ? const Color(0xFF1F2937)
+                        : const Color(0xFFF3F4F6),
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 10),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                  style: const TextStyle(fontSize: 14),
+                ),
+              ),
+
+              // ── Chips filtre statut ─────────────────────────────
+              _StatusFilterBar(
+                selected: _filterStatus,
+                onSelected: (s) => setState(() => _filterStatus = s),
+              ),
+
               // ── Chips filtre mois ──────────────────────────────
               _MonthFilterBar(
                 months: months,
@@ -52,23 +148,53 @@ class _InvoicesHistoryScreenState
                 onSelected: (m) => setState(() => _filterMonth = m),
               ),
 
-              // ── Liste ─────────────────────────────────────────
+              // ── Liste groupée par mois ────────────────────────
               Expanded(
                 child: displayed.isEmpty
                     ? const Center(
                         child: Text('Aucune facture ce mois',
                             style: TextStyle(color: Color(0xFF9CA3AF))))
-                    : ListView.separated(
-                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-                        itemCount: displayed.length,
-                        separatorBuilder: (context, index) =>
-                            const SizedBox(height: 8),
-                        itemBuilder: (context, i) => _InvoiceTile(
-                          invoice: displayed[i],
-                          onTap: () =>
-                              _showDetail(context, displayed[i]),
-                          onDelete: () => _confirmDelete(displayed[i]),
-                        ),
+                    : ListView.builder(
+                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+                        itemCount: grouped.length,
+                        itemBuilder: (context, gi) {
+                          final key = grouped.keys.elementAt(gi);
+                          final monthInvoices = grouped[key]!;
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (gi > 0) const SizedBox(height: 16),
+                              // ── En-tête mois ────────────────────
+                              Padding(
+                                padding: const EdgeInsets.only(
+                                    left: 4, bottom: 8),
+                                child: Text(
+                                  _monthLabel(key),
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppColors.textSecondary(context),
+                                    letterSpacing: 0.2,
+                                  ),
+                                ),
+                              ),
+                              // ── Factures du mois ────────────────
+                              for (int i = 0;
+                                  i < monthInvoices.length;
+                                  i++) ...[
+                                _InvoiceTile(
+                                  invoice: monthInvoices[i],
+                                  onTap: () => _showDetail(
+                                      context, monthInvoices[i]),
+                                  onDelete: () =>
+                                      _confirmDelete(monthInvoices[i]),
+                                ),
+                                if (i < monthInvoices.length - 1)
+                                  const SizedBox(height: 8),
+                              ],
+                            ],
+                          );
+                        },
                       ),
               ),
             ],
@@ -76,6 +202,27 @@ class _InvoicesHistoryScreenState
         },
       ),
     );
+  }
+
+  Map<String, List<Invoice>> _groupByMonth(List<Invoice> invoices) {
+    final map = <String, List<Invoice>>{};
+    for (final inv in invoices) {
+      final d = inv.createdAt.toLocal();
+      final key = '${d.year}-${d.month.toString().padLeft(2, '0')}';
+      (map[key] ??= []).add(inv);
+    }
+    return Map.fromEntries(
+      map.entries.toList()..sort((a, b) => b.key.compareTo(a.key)),
+    );
+  }
+
+  String _monthLabel(String key) {
+    final parts = key.split('-');
+    final year = int.parse(parts[0]);
+    final month = int.parse(parts[1]);
+    final dt = DateTime(year, month);
+    final raw = DateFormat('MMMM yyyy', 'fr_FR').format(dt);
+    return raw[0].toUpperCase() + raw.substring(1);
   }
 
   List<DateTime> _availableMonths(List<Invoice> invoices) {
@@ -129,6 +276,69 @@ class _InvoicesHistoryScreenState
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) => _InvoiceDetailSheet(invoice: invoice),
+    );
+  }
+}
+
+// ─── Status filter bar ─────────────────────────────────────────────────────
+
+class _StatusFilterBar extends StatelessWidget {
+  final String? selected;
+  final ValueChanged<String?> onSelected;
+
+  const _StatusFilterBar({
+    required this.selected,
+    required this.onSelected,
+  });
+
+  static const _items = <(String?, String, Color)>[
+    (null, 'Tout', Color(0xFF6B7280)),
+    ('sent', 'À encaisser', Color(0xFF2563EB)),
+    ('overdue', 'En retard', Color(0xFFDC2626)),
+    ('paid', 'Payées', Color(0xFF16A34A)),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      child: Row(
+        children: [
+          for (int i = 0; i < _items.length; i++) ...[
+            if (i > 0) const SizedBox(width: 8),
+            _buildChip(_items[i]),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildChip((String?, String, Color) item) {
+    final (value, label, color) = item;
+    final isSelected = selected == value;
+    return GestureDetector(
+      onTap: () => onSelected(value),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        decoration: BoxDecoration(
+          color: isSelected ? color.withAlpha(25) : Colors.transparent,
+          border: Border.all(
+            color: isSelected ? color : const Color(0xFFE5E7EB),
+            width: isSelected ? 1.5 : 1,
+          ),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+            color: isSelected ? color : const Color(0xFF6B7280),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -240,7 +450,7 @@ class _InvoiceTileState extends State<_InvoiceTile> {
   @override
   Widget build(BuildContext context) {
     final inv = widget.invoice;
-    final dateFmt = DateFormat('dd/MM/yyyy', 'fr_FR');
+    final dateFmt = DateFormat('dd MMMM yyyy', 'fr_FR');
     final euroFmt = NumberFormat.currency(
         locale: 'fr_FR',
         symbol: '€',
@@ -269,8 +479,8 @@ class _InvoiceTileState extends State<_InvoiceTile> {
                 padding: const EdgeInsets.only(right: 24),
                 child: Opacity(
                   opacity: deleteOpacity,
-                  child: const Icon(Icons.delete_outline,
-                      color: Colors.white, size: 26),
+                  child: const Icon(LucideIcons.trash2,
+                      color: Colors.white, size: 22),
                 ),
               ),
             ),
@@ -310,8 +520,9 @@ class _InvoiceTileState extends State<_InvoiceTile> {
                       border: Border.all(color: const Color(0xFFE5E7EB)),
                     ),
                     child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // ── Icône facture ────────────────────────
+                        // 1. Icône statut
                         Container(
                           width: 44,
                           height: 44,
@@ -319,63 +530,84 @@ class _InvoiceTileState extends State<_InvoiceTile> {
                             color: statusColor.withAlpha(20),
                             borderRadius: BorderRadius.circular(12),
                           ),
-                          child: Icon(Icons.receipt_long_outlined,
+                          child: Icon(LucideIcons.fileText,
                               color: statusColor, size: 22),
                         ),
-                        const SizedBox(width: 14),
-                        // ── Infos ───────────────────────────────
+                        const SizedBox(width: 12),
+                        // 2. Colonne centrale
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                inv.invoiceNumber,
+                                inv.clientName ?? '—',
                                 style: const TextStyle(
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 15),
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600,
+                                  color: Color(0xFF111827),
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 2),
+                              Row(
+                                children: [
+                                  Text(
+                                    dateFmt.format(
+                                        inv.createdAt.toLocal()),
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      color: Color(0xFF6B7280),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 8, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: statusColor.withAlpha(20),
+                                      borderRadius:
+                                          BorderRadius.circular(10),
+                                    ),
+                                    child: Text(
+                                      inv.displayStatus,
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w700,
+                                        color: statusColor,
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
                               const SizedBox(height: 2),
                               Text(
-                                '${inv.clientName ?? 'Client'} · ${dateFmt.format(inv.createdAt.toLocal())}',
+                                'N° ${inv.invoiceNumber}',
                                 style: const TextStyle(
-                                    fontSize: 12,
-                                    color: Color(0xFF6B7280)),
+                                  fontSize: 11,
+                                  color: Color(0xFF9CA3AF),
+                                ),
                               ),
                             ],
                           ),
                         ),
-                        const SizedBox(width: 8),
-                        // ── Montant + statut ────────────────────
+                        // 3. Montant aligné haut droite
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
                             Text(
                               euroFmt.format(inv.totalAmount),
                               style: const TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 14),
-                            ),
-                            const SizedBox(height: 4),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 8, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: statusColor.withAlpha(20),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Text(
-                                inv.displayStatus,
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w700,
-                                  color: statusColor,
-                                ),
+                                fontSize: 15,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF111827),
                               ),
                             ),
                           ],
                         ),
                         const SizedBox(width: 4),
-                        const Icon(Icons.chevron_right,
+                        // 4. Chevron
+                        const Icon(LucideIcons.chevronRight,
                             color: Color(0xFF9CA3AF), size: 18),
                       ],
                     ),
@@ -392,13 +624,110 @@ class _InvoiceTileState extends State<_InvoiceTile> {
 
 // ─── Invoice detail bottom sheet ───────────────────────────────────────────
 
-class _InvoiceDetailSheet extends ConsumerWidget {
+class _InvoiceDetailSheet extends ConsumerStatefulWidget {
   final Invoice invoice;
 
   const _InvoiceDetailSheet({required this.invoice});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_InvoiceDetailSheet> createState() =>
+      _InvoiceDetailSheetState();
+}
+
+class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
+  bool _sending = false;
+
+  /// Construit le corps d'email standard.
+  String _emailBody(Invoice inv, String formattedAmount) {
+    return 'Bonjour,\n\n'
+        'Veuillez trouver ci-joint la facture ${inv.invoiceNumber} '
+        'd\'un montant de $formattedAmount.\n\n'
+        'Date d\'émission : ${DateFormat('dd/MM/yyyy', 'fr_FR').format(inv.createdAt.toLocal())}\n'
+        'Échéance : 30 jours\n\n'
+        'Merci de votre confiance.\n\n'
+        'Cordialement';
+  }
+
+  /// Envoie la facture par email (PDF en pièce jointe via share sheet,
+  /// ou mailto: si le PDF n'est plus disponible localement).
+  Future<void> _sendEmail(Invoice inv) async {
+    setState(() => _sending = true);
+
+    final euroFmt = NumberFormat.currency(
+        locale: 'fr_FR', symbol: '€', decimalDigits: 2);
+    final amount = euroFmt.format(inv.totalAmount);
+    final subject = 'Facture ${inv.invoiceNumber} — ${inv.clientName ?? ""}';
+    final body = _emailBody(inv, amount);
+
+    try {
+      // 1. Fichier local ?
+      final dir = await getApplicationDocumentsDirectory();
+      final localFile = File('${dir.path}/Facture_${inv.invoiceNumber}.pdf');
+
+      if (await localFile.exists()) {
+        // Partage depuis le fichier local
+        await Share.shareXFiles(
+          [XFile(localFile.path, mimeType: 'application/pdf')],
+          subject: subject,
+          text: body,
+        );
+      } else if (inv.pdfPath != null) {
+        // 2. Télécharger depuis Supabase Storage
+        final bytes = await Supabase.instance.client.storage
+            .from('invoices')
+            .download(inv.pdfPath!);
+        final tmpDir = await getTemporaryDirectory();
+        final tmpFile =
+            File('${tmpDir.path}/Facture_${inv.invoiceNumber}.pdf');
+        await tmpFile.writeAsBytes(bytes);
+        await Share.shareXFiles(
+          [XFile(tmpFile.path, mimeType: 'application/pdf')],
+          subject: subject,
+          text: body,
+        );
+      } else {
+        // 3. Fallback : mailto sans pièce jointe
+        final uri = Uri(
+          scheme: 'mailto',
+          path: inv.clientEmail ?? '',
+          queryParameters: {'subject': subject, 'body': body},
+        );
+        if (await canLaunchUrl(uri)) {
+          await launchUrl(uri);
+        }
+      }
+
+      // Mettre à jour le statut → envoyée
+      if (inv.status == 'draft' && mounted) {
+        await ref
+            .read(invoicesProvider.notifier)
+            .updateStatus(inv.id, 'sent');
+      }
+
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context)
+          ..clearSnackBars()
+          ..showSnackBar(const SnackBar(
+            content: Text('Facture envoyée'),
+            backgroundColor: Color(0xFF16A34A),
+            behavior: SnackBarBehavior.floating,
+          ));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erreur envoi : $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final inv = widget.invoice;
     final dateFmt = DateFormat('dd MMMM yyyy', 'fr_FR');
     final euroFmt = NumberFormat.currency(
         locale: 'fr_FR', symbol: '€', decimalDigits: 2);
@@ -427,12 +756,12 @@ class _InvoiceDetailSheet extends ConsumerWidget {
 
           // ── Numéro facture ──
           Text(
-            invoice.invoiceNumber,
+            inv.invoiceNumber,
             style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 4),
           Text(
-            '${invoice.clientName ?? 'Client'} · ${dateFmt.format(invoice.createdAt.toLocal())}',
+            '${inv.clientName ?? 'Client'} · ${dateFmt.format(inv.createdAt.toLocal())}',
             style: const TextStyle(fontSize: 14, color: Color(0xFF6B7280)),
           ),
           const SizedBox(height: 20),
@@ -451,7 +780,7 @@ class _InvoiceDetailSheet extends ConsumerWidget {
                     style: TextStyle(fontSize: 12, color: Color(0xFF6B7280))),
                 const SizedBox(height: 4),
                 Text(
-                  euroFmt.format(invoice.totalAmount),
+                  euroFmt.format(inv.totalAmount),
                   style: TextStyle(
                       fontSize: 28,
                       fontWeight: FontWeight.w800,
@@ -466,30 +795,48 @@ class _InvoiceDetailSheet extends ConsumerWidget {
           const SizedBox(height: 24),
 
           // ── Actions ──
-          if (invoice.status == 'draft')
+
+          // Envoyer par email (draft ou sent — relance)
+          if (inv.status != 'paid' && inv.status != 'cancelled')
             _actionButton(
               context: context,
-              icon: Icons.send_outlined,
-              label: 'Marquer comme envoyée',
+              icon: _sending
+                  ? null
+                  : (inv.status == 'sent'
+                      ? LucideIcons.forward
+                      : LucideIcons.mail),
+              label: inv.status == 'sent' ? 'Relancer par email' : 'Envoyer par email',
               color: const Color(0xFF2563EB),
-              onTap: () {
-                ref
-                    .read(invoicesProvider.notifier)
-                    .updateStatus(invoice.id, 'sent');
-                Navigator.pop(context);
-              },
+              loading: _sending,
+              onTap: _sending ? null : () => _sendEmail(inv),
             ),
-          if (invoice.status == 'draft' || invoice.status == 'sent') ...[
+
+          if (inv.status == 'draft') ...[
             const SizedBox(height: 10),
             _actionButton(
               context: context,
-              icon: Icons.check_circle_outline,
+              icon: LucideIcons.send,
+              label: 'Marquer comme envoyée',
+              color: const Color(0xFF6B7280),
+              onTap: () {
+                ref
+                    .read(invoicesProvider.notifier)
+                    .updateStatus(inv.id, 'sent');
+                Navigator.pop(context);
+              },
+            ),
+          ],
+          if (inv.status == 'draft' || inv.status == 'sent') ...[
+            const SizedBox(height: 10),
+            _actionButton(
+              context: context,
+              icon: LucideIcons.checkCircle,
               label: 'Marquer comme payée',
               color: const Color(0xFF16A34A),
               onTap: () {
                 ref
                     .read(invoicesProvider.notifier)
-                    .updateStatus(invoice.id, 'paid');
+                    .updateStatus(inv.id, 'paid');
                 Navigator.pop(context);
               },
             ),
@@ -501,16 +848,24 @@ class _InvoiceDetailSheet extends ConsumerWidget {
 
   Widget _actionButton({
     required BuildContext context,
-    required IconData icon,
+    required IconData? icon,
     required String label,
     required Color color,
-    required VoidCallback onTap,
+    VoidCallback? onTap,
+    bool loading = false,
   }) {
     return SizedBox(
       width: double.infinity,
       child: OutlinedButton.icon(
         onPressed: onTap,
-        icon: Icon(icon, size: 18),
+        icon: loading
+            ? SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(
+                    strokeWidth: 2, color: color),
+              )
+            : Icon(icon, size: 18),
         label: Text(label),
         style: OutlinedButton.styleFrom(
           foregroundColor: color,
@@ -537,7 +892,7 @@ class _EmptyInvoices extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.receipt_long_outlined,
+            Icon(LucideIcons.fileText,
                 size: 64, color: Color(0xFF9CA3AF)),
             SizedBox(height: 16),
             Text('Aucune facture',
