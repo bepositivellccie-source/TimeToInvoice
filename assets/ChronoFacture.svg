@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 842.05 445.5">
+  <defs>
+    <style>
+      .cls-1 {
+        letter-spacing: .01em;
+      }
+
+      .cls-1, .cls-2, .cls-3, .cls-4, .cls-5, .cls-6 {
+        font-family: Montserrat-Medium, Montserrat;
+        font-weight: 500;
+      }
+
+      .cls-7 {
+        stroke-width: 17px;
+      }
+
+      .cls-7, .cls-8, .cls-9, .cls-10 {
+        fill: none;
+        stroke: #305da8;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+
+      .cls-2 {
+        letter-spacing: 0em;
+      }
+
+      .cls-11 {
+        letter-spacing: .01em;
+      }
+
+      .cls-11, .cls-12, .cls-13, .cls-14 {
+        font-family: Montserrat-ExtraBold, Montserrat;
+        font-weight: 700;
+      }
+
+      .cls-3 {
+        letter-spacing: 0em;
+      }
+
+      .cls-15 {
+        fill: #1d1d1b;
+        font-size: 106.29px;
+      }
+
+      .cls-8 {
+        stroke-width: 25.51px;
+      }
+
+      .cls-9 {
+        stroke-width: 11.34px;
+      }
+
+      .cls-12 {
+        letter-spacing: .02em;
+      }
+
+      .cls-4 {
+        letter-spacing: 0em;
+      }
+
+      .cls-5 {
+        letter-spacing: .02em;
+      }
+
+      .cls-13 {
+        letter-spacing: 0em;
+      }
+
+      .cls-10 {
+        stroke-width: 5.67px;
+      }
+
+      .cls-14, .cls-6 {
+        letter-spacing: .01em;
+      }
+    </style>
+  </defs>
+  <g id="Calque_1" data-name="Calque 1">
+    <text class="cls-15" transform="translate(0 417.01)"><tspan class="cls-11" x="0" y="0">Ch</tspan><tspan class="cls-13" x="154.55" y="0">r</tspan><tspan class="cls-11" x="201.96" y="0">o</tspan><tspan class="cls-12" x="273.81" y="0">n</tspan><tspan class="cls-14" x="349.71" y="0">o</tspan><tspan class="cls-2" x="421.56" y="0">F</tspan><tspan class="cls-1" x="488.1" y="0">a</tspan><tspan class="cls-5" x="553.04" y="0">c</tspan><tspan class="cls-3" x="615.54" y="0">tu</tspan><tspan class="cls-4" x="733.63" y="0">r</tspan><tspan class="cls-6" x="777" y="0">e</tspan></text>
+  </g>
+  <g id="Calque_5" data-name="Calque 5">
+    <g>
+      <polyline class="cls-7" points="419.9 55.27 474.43 55.27 518.62 94.65 518.62 281.95 470.3 281.95"/>
+      <polyline class="cls-7" points="518.62 94.65 474.44 94.65 474.43 94.64 474.43 55.27"/>
+      <path class="cls-7" d="M488.78,228.71c-20.03,32.07-55.65,53.41-96.25,53.41-62.63,0-113.4-50.77-113.4-113.4s50.77-113.4,113.4-113.4V16.19"/>
+      <rect class="cls-7" x="371.81" y="8.5" width="41.85" height="14.52" rx="5.12" ry="5.12"/>
+      <line class="cls-8" x1="325.35" y1="71.7" x2="311.61" y2="50.78"/>
+      <line class="cls-9" x1="393.2" y1="78.25" x2="393.2" y2="95.96"/>
+      <line class="cls-9" x1="303.7" y1="167.75" x2="321.41" y2="167.75"/>
+      <line class="cls-9" x1="393.2" y1="257.25" x2="393.2" y2="239.54"/>
+      <line class="cls-9" x1="482.7" y1="167.75" x2="464.99" y2="167.75"/>
+      <line class="cls-10" x1="348.34" y1="89.84" x2="357.2" y2="105.17"/>
+      <line class="cls-10" x1="315.29" y1="122.3" x2="330.62" y2="131.16"/>
+      <line class="cls-10" x1="314.48" y1="211.8" x2="329.82" y2="202.95"/>
+      <line class="cls-10" x1="346.95" y1="244.86" x2="355.8" y2="229.52"/>
+      <line class="cls-10" x1="436.45" y1="245.66" x2="427.59" y2="230.33"/>
+      <line class="cls-10" x1="469.5" y1="213.2" x2="454.17" y2="204.34"/>
+      <line class="cls-10" x1="470.31" y1="123.7" x2="454.97" y2="132.55"/>
+      <line class="cls-10" x1="437.84" y1="90.64" x2="428.99" y2="105.98"/>
+    </g>
+  </g>
+</svg>

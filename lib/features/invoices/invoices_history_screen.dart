@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:printing/printing.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/models/invoice.dart';
@@ -41,10 +42,178 @@ class _InvoicesHistoryScreenState
     });
   }
 
+  bool get _hasActiveFilters =>
+      _filterStatus != null || _filterMonth != null;
+
+  int get _activeFilterCount {
+    int count = 0;
+    if (_filterStatus != null) count++;
+    if (_filterMonth != null) count++;
+    return count;
+  }
+
   @override
   void dispose() {
     _searchCtrl.dispose();
     super.dispose();
+  }
+
+  void _showFilterSheet(List<DateTime> months) {
+    final fmt = DateFormat('MMM yyyy', 'fr_FR');
+
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => StatefulBuilder(
+        builder: (ctx, setSheetState) => Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Handle
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE5E7EB),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              // ── Statut ──────────────────────────────────────
+              const Text(
+                'Statut',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF6B7280),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final item in _statusItems)
+                    _filterChip(
+                      label: item.$2,
+                      color: item.$3,
+                      isSelected: _filterStatus == item.$1,
+                      onTap: () {
+                        setState(() => _filterStatus = item.$1);
+                        setSheetState(() {});
+                      },
+                    ),
+                ],
+              ),
+              const SizedBox(height: 20),
+
+              // ── Période ─────────────────────────────────────
+              const Text(
+                'Période',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF6B7280),
+                ),
+              ),
+              const SizedBox(height: 10),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    _filterChip(
+                      label: 'Tout',
+                      color: Theme.of(context).colorScheme.primary,
+                      isSelected: _filterMonth == null,
+                      onTap: () {
+                        setState(() => _filterMonth = null);
+                        setSheetState(() {});
+                      },
+                    ),
+                    for (final m in months) ...[
+                      const SizedBox(width: 8),
+                      _filterChip(
+                        label: fmt.format(m),
+                        color: Theme.of(context).colorScheme.primary,
+                        isSelected: _filterMonth != null &&
+                            _filterMonth!.year == m.year &&
+                            _filterMonth!.month == m.month,
+                        onTap: () {
+                          setState(() => _filterMonth = m);
+                          setSheetState(() {});
+                        },
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              // ── Réinitialiser ───────────────────────────────
+              if (_hasActiveFilters)
+                SizedBox(
+                  width: double.infinity,
+                  child: TextButton(
+                    onPressed: () {
+                      setState(() {
+                        _filterStatus = null;
+                        _filterMonth = null;
+                      });
+                      Navigator.pop(ctx);
+                    },
+                    child: const Text('Réinitialiser les filtres'),
+                  ),
+                ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  static const _statusItems = <(String?, String, Color)>[
+    (null, 'Tout', Color(0xFF6B7280)),
+    ('sent', 'À encaisser', Color(0xFF2563EB)),
+    ('overdue', 'En retard', Color(0xFFDC2626)),
+    ('paid', 'Payées', Color(0xFF16A34A)),
+  ];
+
+  Widget _filterChip({
+    required String label,
+    required Color color,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        decoration: BoxDecoration(
+          color: isSelected ? color.withAlpha(25) : Colors.transparent,
+          border: Border.all(
+            color: isSelected ? color : const Color(0xFFE5E7EB),
+            width: isSelected ? 1.5 : 1,
+          ),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+            color: isSelected ? color : const Color(0xFF6B7280),
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -98,54 +267,95 @@ class _InvoicesHistoryScreenState
 
           return Column(
             children: [
-              // ── Barre de recherche ─────────────────────────────
+              // ── Recherche + bouton Filtres ─────────────────────
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                child: TextField(
-                  controller: _searchCtrl,
-                  decoration: InputDecoration(
-                    hintText: 'Rechercher un client…',
-                    hintStyle: const TextStyle(
-                      fontSize: 14,
-                      color: Color(0xFFBDBDBD),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _searchCtrl,
+                        decoration: InputDecoration(
+                          hintText: 'Rechercher un client…',
+                          hintStyle: const TextStyle(
+                            fontSize: 14,
+                            color: Color(0xFFBDBDBD),
+                          ),
+                          prefixIcon: const Icon(LucideIcons.search,
+                              size: 18, color: Color(0xFF9CA3AF)),
+                          suffixIcon: _searchQuery.isNotEmpty
+                              ? GestureDetector(
+                                  onTap: () => _searchCtrl.clear(),
+                                  child: const Icon(LucideIcons.x,
+                                      size: 16,
+                                      color: Color(0xFF9CA3AF)),
+                                )
+                              : null,
+                          filled: true,
+                          fillColor:
+                              Theme.of(context).brightness ==
+                                      Brightness.dark
+                                  ? const Color(0xFF1F2937)
+                                  : const Color(0xFFF3F4F6),
+                          isDense: true,
+                          contentPadding:
+                              const EdgeInsets.symmetric(vertical: 0),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
+                          ),
+                        ),
+                        style: const TextStyle(fontSize: 14),
+                      ),
                     ),
-                    prefixIcon: const Icon(LucideIcons.search,
-                        size: 18, color: Color(0xFF9CA3AF)),
-                    suffixIcon: _searchQuery.isNotEmpty
-                        ? GestureDetector(
-                            onTap: () => _searchCtrl.clear(),
-                            child: const Icon(LucideIcons.x,
-                                size: 16, color: Color(0xFF9CA3AF)),
-                          )
-                        : null,
-                    filled: true,
-                    fillColor: Theme.of(context).brightness ==
-                            Brightness.dark
-                        ? const Color(0xFF1F2937)
-                        : const Color(0xFFF3F4F6),
-                    isDense: true,
-                    contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 14, vertical: 10),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide.none,
+                    const SizedBox(width: 10),
+                    GestureDetector(
+                      onTap: () => _showFilterSheet(months),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: _hasActiveFilters
+                              ? const Color(0xFF305DA8)
+                              : const Color(0xFFF3F4F6),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              LucideIcons.slidersHorizontal,
+                              size: 18,
+                              color: _hasActiveFilters
+                                  ? Colors.white
+                                  : const Color(0xFF6B7280),
+                            ),
+                            if (_hasActiveFilters) ...[
+                              const SizedBox(width: 6),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius:
+                                      BorderRadius.circular(10),
+                                ),
+                                child: Text(
+                                  '$_activeFilterCount',
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    color: Color(0xFF305DA8),
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
                     ),
-                  ),
-                  style: const TextStyle(fontSize: 14),
+                  ],
                 ),
-              ),
-
-              // ── Chips filtre statut ─────────────────────────────
-              _StatusFilterBar(
-                selected: _filterStatus,
-                onSelected: (s) => setState(() => _filterStatus = s),
-              ),
-
-              // ── Chips filtre mois ──────────────────────────────
-              _MonthFilterBar(
-                months: months,
-                selected: _filterMonth,
-                onSelected: (m) => setState(() => _filterMonth = m),
               ),
 
               // ── Liste groupée par mois ────────────────────────
@@ -280,146 +490,6 @@ class _InvoicesHistoryScreenState
   }
 }
 
-// ─── Status filter bar ─────────────────────────────────────────────────────
-
-class _StatusFilterBar extends StatelessWidget {
-  final String? selected;
-  final ValueChanged<String?> onSelected;
-
-  const _StatusFilterBar({
-    required this.selected,
-    required this.onSelected,
-  });
-
-  static const _items = <(String?, String, Color)>[
-    (null, 'Tout', Color(0xFF6B7280)),
-    ('sent', 'À encaisser', Color(0xFF2563EB)),
-    ('overdue', 'En retard', Color(0xFFDC2626)),
-    ('paid', 'Payées', Color(0xFF16A34A)),
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-      child: Row(
-        children: [
-          for (int i = 0; i < _items.length; i++) ...[
-            if (i > 0) const SizedBox(width: 8),
-            _buildChip(_items[i]),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildChip((String?, String, Color) item) {
-    final (value, label, color) = item;
-    final isSelected = selected == value;
-    return GestureDetector(
-      onTap: () => onSelected(value),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-        decoration: BoxDecoration(
-          color: isSelected ? color.withAlpha(25) : Colors.transparent,
-          border: Border.all(
-            color: isSelected ? color : const Color(0xFFE5E7EB),
-            width: isSelected ? 1.5 : 1,
-          ),
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-            color: isSelected ? color : const Color(0xFF6B7280),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ─── Month filter bar ──────────────────────────────────────────────────────
-
-class _MonthFilterBar extends StatelessWidget {
-  final List<DateTime> months;
-  final DateTime? selected;
-  final ValueChanged<DateTime?> onSelected;
-
-  const _MonthFilterBar({
-    required this.months,
-    required this.selected,
-    required this.onSelected,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final primary = Theme.of(context).colorScheme.primary;
-    final fmt = DateFormat('MMM yyyy', 'fr_FR');
-
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-      child: Row(
-        children: [
-          _chip(
-            label: 'Tout',
-            isSelected: selected == null,
-            color: primary,
-            onTap: () => onSelected(null),
-          ),
-          for (final m in months) ...[
-            const SizedBox(width: 8),
-            _chip(
-              label: fmt.format(m),
-              isSelected: selected != null &&
-                  selected!.year == m.year &&
-                  selected!.month == m.month,
-              color: primary,
-              onTap: () => onSelected(m),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _chip({
-    required String label,
-    required bool isSelected,
-    required Color color,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-        decoration: BoxDecoration(
-          color: isSelected ? color.withAlpha(25) : Colors.transparent,
-          border: Border.all(
-            color: isSelected ? color : const Color(0xFFE5E7EB),
-            width: isSelected ? 1.5 : 1,
-          ),
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-            color: isSelected ? color : const Color(0xFF6B7280),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 // ─── Invoice tile — swipe gauche → delete ──────────────────────────────────
 
 class _InvoiceTile extends StatefulWidget {
@@ -550,35 +620,12 @@ class _InvoiceTileState extends State<_InvoiceTile> {
                                 overflow: TextOverflow.ellipsis,
                               ),
                               const SizedBox(height: 2),
-                              Row(
-                                children: [
-                                  Text(
-                                    dateFmt.format(
-                                        inv.createdAt.toLocal()),
-                                    style: const TextStyle(
-                                      fontSize: 12,
-                                      color: Color(0xFF6B7280),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 8, vertical: 2),
-                                    decoration: BoxDecoration(
-                                      color: statusColor.withAlpha(20),
-                                      borderRadius:
-                                          BorderRadius.circular(10),
-                                    ),
-                                    child: Text(
-                                      inv.displayStatus,
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w700,
-                                        color: statusColor,
-                                      ),
-                                    ),
-                                  ),
-                                ],
+                              Text(
+                                dateFmt.format(inv.createdAt.toLocal()),
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Color(0xFF6B7280),
+                                ),
                               ),
                               const SizedBox(height: 2),
                               Text(
@@ -591,7 +638,7 @@ class _InvoiceTileState extends State<_InvoiceTile> {
                             ],
                           ),
                         ),
-                        // 3. Montant aligné haut droite
+                        // 3. Montant + statut alignés droite
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
@@ -601,6 +648,24 @@ class _InvoiceTileState extends State<_InvoiceTile> {
                                 fontSize: 15,
                                 fontWeight: FontWeight.w600,
                                 color: Color(0xFF111827),
+                              ),
+                            ),
+                            // Espace = SizedBox(2) + ligne date (12px hauteur ~18 rendu) + SizedBox(2)
+                            const SizedBox(height: 18),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: statusColor.withAlpha(20),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Text(
+                                inv.displayStatus,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: statusColor,
+                                ),
                               ),
                             ),
                           ],
@@ -636,6 +701,55 @@ class _InvoiceDetailSheet extends ConsumerStatefulWidget {
 
 class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
   bool _sending = false;
+  bool _loadingPdf = false;
+
+  static const _sheetStatusColors = {
+    'draft': Color(0xFF6B7280),
+    'sent': Color(0xFF2563EB),
+    'paid': Color(0xFF16A34A),
+    'cancelled': Color(0xFF9CA3AF),
+  };
+
+  Color _sheetStatusColor(Invoice inv) {
+    if (inv.isOverdue) return AppColors.danger;
+    return _sheetStatusColors[inv.status] ?? const Color(0xFF6B7280);
+  }
+
+  /// Ouvre le PDF de la facture (téléchargement Storage ou fichier local).
+  Future<void> _viewPdf(Invoice inv) async {
+    setState(() => _loadingPdf = true);
+    try {
+      if (inv.pdfPath != null) {
+        final bytes = await Supabase.instance.client.storage
+            .from('invoices')
+            .download(inv.pdfPath!);
+        final dir = await getTemporaryDirectory();
+        final file =
+            File('${dir.path}/${inv.invoiceNumber}.pdf');
+        await file.writeAsBytes(bytes);
+        await Printing.layoutPdf(
+          onLayout: (_) async => bytes,
+          name: 'Facture_${inv.invoiceNumber}',
+        );
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('PDF non disponible pour cette facture')),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erreur : $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _loadingPdf = false);
+      }
+    }
+  }
 
   /// Construit le corps d'email standard.
   String _emailBody(Invoice inv, String formattedAmount) {
@@ -754,15 +868,41 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
             ),
           ),
 
-          // ── Numéro facture ──
+          // ── Header : client + date + numéro & statut ──
           Text(
-            inv.invoiceNumber,
-            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
+            inv.clientName ?? 'Client',
+            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 4),
           Text(
-            '${inv.clientName ?? 'Client'} · ${dateFmt.format(inv.createdAt.toLocal())}',
+            dateFmt.format(inv.createdAt.toLocal()),
             style: const TextStyle(fontSize: 14, color: Color(0xFF6B7280)),
+          ),
+          const SizedBox(height: 4),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                'N° ${inv.invoiceNumber}',
+                style: const TextStyle(fontSize: 12, color: Color(0xFF9CA3AF)),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: _sheetStatusColor(inv).withAlpha(20),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  inv.displayStatus,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: _sheetStatusColor(inv),
+                  ),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 20),
 
@@ -795,6 +935,17 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
           const SizedBox(height: 24),
 
           // ── Actions ──
+
+          // Voir le PDF
+          _actionButton(
+            context: context,
+            icon: _loadingPdf ? null : LucideIcons.fileText,
+            label: 'Voir le PDF',
+            color: const Color(0xFF305DA8),
+            loading: _loadingPdf,
+            onTap: _loadingPdf ? null : () => _viewPdf(inv),
+          ),
+          const SizedBox(height: 10),
 
           // Envoyer par email (draft ou sent — relance)
           if (inv.status != 'paid' && inv.status != 'cancelled')

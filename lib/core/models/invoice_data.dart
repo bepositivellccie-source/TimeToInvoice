@@ -24,6 +24,7 @@ class InvoiceData {
   final String sellerName;
   final String? sellerAddress;
   final String? sellerSiret;
+  final String? sellerVatNumber;
 
   // Acheteur
   final String buyerName;
@@ -44,6 +45,7 @@ class InvoiceData {
     required this.sellerName,
     this.sellerAddress,
     this.sellerSiret,
+    this.sellerVatNumber,
     required this.buyerName,
     this.buyerAddress,
     this.buyerSiret,

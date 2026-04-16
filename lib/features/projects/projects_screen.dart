@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,6 +7,7 @@ import '../../core/providers/client_display_mode_provider.dart';
 import '../../core/providers/projects_provider.dart';
 import '../../core/providers/clients_provider.dart';
 import '../../core/providers/sessions_provider.dart';
+import '../../core/theme/app_colors.dart';
 import '../clients/client_detail_screen.dart';
 
 // ─── Kanban config ───────────────────────────────────────────────────────────
@@ -38,9 +38,6 @@ class ProjectsScreen extends ConsumerStatefulWidget {
 class _ProjectsScreenState extends ConsumerState<ProjectsScreen>
     with TickerProviderStateMixin {
   late final TabController _tabCtrl;
-  Timer? _tabSwitchTimer;
-  int? _hoveredTabIndex;
-  bool _isDragging = false;
 
   @override
   void initState() {
@@ -53,38 +50,8 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen>
 
   @override
   void dispose() {
-    _tabSwitchTimer?.cancel();
     _tabCtrl.dispose();
     super.dispose();
-  }
-
-  void _onDragStarted() => setState(() => _isDragging = true);
-
-  void _onDragEnd() {
-    _tabSwitchTimer?.cancel();
-    setState(() {
-      _isDragging = false;
-      _hoveredTabIndex = null;
-    });
-  }
-
-  void _scheduleTabSwitch(int index) {
-    if (_hoveredTabIndex == index) return;
-    _tabSwitchTimer?.cancel();
-    setState(() => _hoveredTabIndex = index);
-    if (_tabCtrl.index != index) {
-      _tabSwitchTimer = Timer(const Duration(milliseconds: 400), () {
-        if (mounted) {
-          _tabCtrl.animateTo(index);
-          HapticFeedback.selectionClick();
-        }
-      });
-    }
-  }
-
-  void _cancelTabSwitch() {
-    _tabSwitchTimer?.cancel();
-    if (mounted) setState(() => _hoveredTabIndex = null);
   }
 
   Future<void> _openNewProject() async {
@@ -136,7 +103,7 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen>
           ),
         ],
         bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(48),
+          preferredSize: const Size.fromHeight(56),
           child: Row(
             children: List.generate(3, (i) {
               final status = _kanbanStatuses[i];
@@ -147,98 +114,69 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen>
                       .length ??
                   0;
               final isSelected = _tabCtrl.index == i;
-              final isHovered = _hoveredTabIndex == i && _isDragging;
 
               return Expanded(
-                child: DragTarget<Project>(
-                  onWillAcceptWithDetails: (details) {
-                    _scheduleTabSwitch(i);
-                    return details.data.status != status;
-                  },
-                  onAcceptWithDetails: (details) {
-                    HapticFeedback.mediumImpact();
-                    final colLen = entriesAsync.valueOrNull
-                            ?.where((e) => e.project.status == status)
-                            .length ??
-                        0;
-                    ref.read(projectsProvider.notifier).updateStatus(
-                          id: details.data.id,
-                          clientId: details.data.clientId,
-                          newStatus: status,
-                          sortOrder: colLen,
-                        );
-                  },
-                  onLeave: (_) => _cancelTabSwitch(),
-                  builder: (context, candidates, rejected) {
-                    return GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () => _tabCtrl.animateTo(i),
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 200),
-                        decoration: BoxDecoration(
-                          color: isHovered
-                              ? color.withAlpha(25)
-                              : Colors.transparent,
-                          border: Border(
-                            bottom: BorderSide(
-                              color: isSelected
-                                  ? primary
-                                  : isHovered
-                                      ? color
-                                      : const Color(0xFFE5E7EB),
-                              width: isSelected || isHovered ? 2.5 : 1,
-                            ),
-                          ),
-                        ),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Container(
-                              width: 8,
-                              height: 8,
-                              decoration: BoxDecoration(
-                                color: color,
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              label,
-                              style: TextStyle(
-                                fontWeight: isSelected
-                                    ? FontWeight.w600
-                                    : FontWeight.w500,
-                                fontSize: 14,
-                                color: isSelected
-                                    ? primary
-                                    : const Color(0xFF374151),
-                              ),
-                            ),
-                            if (count > 0) ...[
-                              const SizedBox(width: 4),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 5, vertical: 1),
-                                decoration: BoxDecoration(
-                                  color: color.withAlpha(30),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Text(
-                                  '$count',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w700,
-                                    color: color,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ],
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => _tabCtrl.animateTo(i),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      border: Border(
+                        bottom: BorderSide(
+                          color: isSelected
+                              ? color
+                              : AppColors.border(context),
+                          width: isSelected ? 3 : 1,
                         ),
                       ),
-                    );
-                  },
+                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            color: color,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          label,
+                          style: TextStyle(
+                            fontWeight: isSelected
+                                ? FontWeight.w600
+                                : FontWeight.w500,
+                            fontSize: 14,
+                            color: isSelected
+                                ? primary
+                                : AppColors.textBody(context),
+                          ),
+                        ),
+                        if (count > 0) ...[
+                          const SizedBox(width: 4),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 5, vertical: 1),
+                            decoration: BoxDecoration(
+                              color: color.withAlpha(30),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              '$count',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                color: color,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
                 ),
               );
             }),
@@ -279,10 +217,10 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen>
                         style: TextStyle(
                             fontSize: 18, fontWeight: FontWeight.w600)),
                     const SizedBox(height: 8),
-                    const Text(
+                    Text(
                       'Appuyez sur + pour créer votre premier projet.',
                       textAlign: TextAlign.center,
-                      style: TextStyle(color: Color(0xFF6B7280)),
+                      style: TextStyle(color: AppColors.textSecondary(context)),
                     ),
                     const SizedBox(height: 24),
                     FilledButton.icon(
@@ -325,8 +263,6 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen>
                 projects: statusProjects,
                 clientNames: clientNames,
                 color: color,
-                onDragStarted: _onDragStarted,
-                onDragEnd: _onDragEnd,
               );
             }).toList(),
           );
@@ -382,10 +318,10 @@ class _EmptyColumn extends StatelessWidget {
               status == 'termine'
                   ? 'Les projets terminés apparaîtront ici.'
                   : status == 'en_attente'
-                      ? 'Glissez un projet ici pour le mettre en pause.'
+                      ? 'Les projets en attente apparaîtront ici.'
                       : 'Créez un projet pour commencer.',
               textAlign: TextAlign.center,
-              style: const TextStyle(color: Color(0xFF6B7280), fontSize: 14),
+              style: TextStyle(color: AppColors.textSecondary(context), fontSize: 14),
             ),
             if (isEnCours) ...[
               const SizedBox(height: 24),
@@ -409,221 +345,85 @@ class _ProjectColumn extends ConsumerWidget {
   final List<Project> projects;
   final Map<String, String> clientNames;
   final Color color;
-  final VoidCallback onDragStarted;
-  final VoidCallback onDragEnd;
 
   const _ProjectColumn({
     required this.status,
     required this.projects,
     required this.clientNames,
     required this.color,
-    required this.onDragStarted,
-    required this.onDragEnd,
   });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Zone globale DragTarget pour drops dans l'espace vide sous les cartes
-    return DragTarget<Project>(
-      onWillAcceptWithDetails: (details) => details.data.status != status,
-      onAcceptWithDetails: (details) {
+    return ReorderableListView.builder(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
+      buildDefaultDragHandles: false,
+      proxyDecorator: (child, index, animation) {
+        return AnimatedBuilder(
+          animation: animation,
+          builder: (context, child) => Material(
+            color: Colors.transparent,
+            elevation: 8,
+            borderRadius: BorderRadius.circular(16),
+            child: child,
+          ),
+          child: child,
+        );
+      },
+      itemCount: projects.length,
+      onReorder: (oldIndex, newIndex) {
+        if (newIndex > oldIndex) newIndex--;
+        final reordered = List<Project>.from(projects);
+        final moved = reordered.removeAt(oldIndex);
+        reordered.insert(newIndex, moved);
+        for (int i = 0; i < reordered.length; i++) {
+          reordered[i] = reordered[i].copyWith(sortOrder: i);
+        }
         HapticFeedback.mediumImpact();
-        ref.read(projectsProvider.notifier).updateStatus(
-              id: details.data.id,
-              clientId: details.data.clientId,
-              newStatus: status,
-              sortOrder: projects.length,
+        ref.read(projectsProvider.notifier).reorderColumn(
+              clientId: moved.clientId,
+              columnProjects: reordered,
             );
       },
-      builder: (context, candidates, rejected) {
-        final isHoveringColumn = candidates.isNotEmpty;
-
-        return AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          color: isHoveringColumn ? color.withAlpha(8) : Colors.transparent,
-          child: ListView.builder(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
-            itemCount: projects.length + 1, // +1 pour la zone d'insertion finale
-            itemBuilder: (context, i) {
-              // ── Zone d'insertion en fin de liste ──
-              if (i == projects.length) {
-                return _TailDropZone(
-                  status: status,
-                  color: color,
-                  insertIndex: projects.length,
-                );
-              }
-              return _DraggableProjectCard(
-                project: projects[i],
-                clientName: clientNames[projects[i].id] ?? '',
-                canDelete: status == 'termine',
-                columnStatus: status,
-                columnColor: color,
-                columnProjects: projects,
-                indexInColumn: i,
-                onDragStarted: onDragStarted,
-                onDragEnd: onDragEnd,
-              );
-            },
-          ),
+      itemBuilder: (context, i) {
+        return _ProjectCard(
+          key: ValueKey(projects[i].id),
+          index: i,
+          project: projects[i],
+          clientName: clientNames[projects[i].id] ?? '',
+          canDelete: status == 'termine',
+          statusColor: color,
         );
       },
     );
   }
 }
 
-// ─── Zone d'insertion en fin de colonne ─────────────────────────────────────
+// ─── Project Card — long press → status menu, swipe delete ───────────────────
 
-class _TailDropZone extends ConsumerWidget {
-  final String status;
-  final Color color;
-  final int insertIndex;
-
-  const _TailDropZone({
-    required this.status,
-    required this.color,
-    required this.insertIndex,
-  });
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return DragTarget<Project>(
-      onWillAcceptWithDetails: (details) => true,
-      onAcceptWithDetails: (details) {
-        HapticFeedback.mediumImpact();
-        final droppedProject = details.data;
-
-        if (droppedProject.status == status) {
-          // Même colonne : on le met à la fin
-          // On a besoin de la liste complète pour recalculer l'ordre
-          final entries = ref.read(timerProjectsProvider).valueOrNull ?? [];
-          final columnProjects = entries
-              .where((e) => e.project.status == status)
-              .map((e) => e.project)
-              .toList()
-            ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
-
-          final reordered = List<Project>.from(columnProjects);
-          final oldIndex =
-              reordered.indexWhere((p) => p.id == droppedProject.id);
-          if (oldIndex == -1) return;
-          reordered.removeAt(oldIndex);
-          reordered.add(droppedProject);
-          for (int i = 0; i < reordered.length; i++) {
-            reordered[i] = reordered[i].copyWith(sortOrder: i);
-          }
-          ref.read(projectsProvider.notifier).reorderColumn(
-                clientId: droppedProject.clientId,
-                columnProjects: reordered,
-              );
-        } else {
-          // Colonne différente : changement de statut, en fin de liste
-          ref.read(projectsProvider.notifier).updateStatus(
-                id: droppedProject.id,
-                clientId: droppedProject.clientId,
-                newStatus: status,
-                sortOrder: insertIndex,
-              );
-        }
-      },
-      builder: (context, candidates, rejected) {
-        final isHovering = candidates.isNotEmpty;
-
-        return Column(
-          children: [
-            // ── Trait d'insertion visible au survol ──
-            if (isHovering)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 4),
-                child: Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    Container(
-                      height: 3,
-                      margin: const EdgeInsets.symmetric(horizontal: 4),
-                      decoration: BoxDecoration(
-                        color: color,
-                        borderRadius: BorderRadius.circular(2),
-                        boxShadow: [
-                          BoxShadow(
-                            color: color.withAlpha(80),
-                            blurRadius: 4,
-                            spreadRadius: 1,
-                          ),
-                        ],
-                      ),
-                    ),
-                    Positioned(
-                      left: 0,
-                      top: -2.5,
-                      child: Container(
-                        width: 8,
-                        height: 8,
-                        decoration: BoxDecoration(
-                          color: color,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                    ),
-                    Positioned(
-                      right: 0,
-                      top: -2.5,
-                      child: Container(
-                        width: 8,
-                        height: 8,
-                        decoration: BoxDecoration(
-                          color: color,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            // Zone invisible de réception (hauteur suffisante pour être ciblée)
-            SizedBox(height: isHovering ? 60 : 80),
-          ],
-        );
-      },
-    );
-  }
-}
-
-// ─── Project Card — draggable + insert indicator + swipe delete ─────────────
-
-class _DraggableProjectCard extends ConsumerStatefulWidget {
+class _ProjectCard extends ConsumerStatefulWidget {
+  final int index;
   final Project project;
   final String clientName;
   final bool canDelete;
-  final String columnStatus;
-  final Color columnColor;
-  final List<Project> columnProjects;
-  final int indexInColumn;
-  final VoidCallback onDragStarted;
-  final VoidCallback onDragEnd;
+  final Color statusColor;
 
-  const _DraggableProjectCard({
+  const _ProjectCard({
+    super.key,
+    required this.index,
     required this.project,
     required this.clientName,
     required this.canDelete,
-    required this.columnStatus,
-    required this.columnColor,
-    required this.columnProjects,
-    required this.indexInColumn,
-    required this.onDragStarted,
-    required this.onDragEnd,
+    required this.statusColor,
   });
 
   @override
-  ConsumerState<_DraggableProjectCard> createState() =>
-      _DraggableProjectCardState();
+  ConsumerState<_ProjectCard> createState() => _ProjectCardState();
 }
 
-class _DraggableProjectCardState
-    extends ConsumerState<_DraggableProjectCard> {
+class _ProjectCardState extends ConsumerState<_ProjectCard> {
   double _swipeOffset = 0;
   bool _dialogShown = false;
-  bool _insertAbove = true;
 
   static String _fmtHHMMSS(int secs) {
     final h = (secs ~/ 3600).toString().padLeft(2, '0');
@@ -664,127 +464,82 @@ class _DraggableProjectCardState
     }
   }
 
-  void _handleDrop(Project droppedProject) {
+  void _showStatusSheet() {
     HapticFeedback.mediumImpact();
-    final insertIndex =
-        _insertAbove ? widget.indexInColumn : widget.indexInColumn + 1;
-
-    if (droppedProject.status == widget.columnStatus) {
-      // ── Même colonne : réordonnancement ──
-      final reordered = List<Project>.from(widget.columnProjects);
-      final oldIndex =
-          reordered.indexWhere((p) => p.id == droppedProject.id);
-      if (oldIndex == -1) return;
-      reordered.removeAt(oldIndex);
-      final adjusted =
-          (insertIndex > oldIndex ? insertIndex - 1 : insertIndex)
-              .clamp(0, reordered.length);
-      reordered.insert(adjusted, droppedProject);
-      for (int i = 0; i < reordered.length; i++) {
-        reordered[i] = reordered[i].copyWith(sortOrder: i);
-      }
-      ref.read(projectsProvider.notifier).reorderColumn(
-            clientId: droppedProject.clientId,
-            columnProjects: reordered,
-          );
-    } else {
-      // ── Colonne différente : changement de statut ──
-      ref.read(projectsProvider.notifier).updateStatus(
-            id: droppedProject.id,
-            clientId: droppedProject.clientId,
-            newStatus: widget.columnStatus,
-            sortOrder: insertIndex,
-          );
-    }
-  }
-
-  Widget _buildCardContent(Color primary, int totalSecs, Color statusColor) {
-    return Card(
-      margin: EdgeInsets.zero,
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: const BorderSide(color: Color(0xFFE5E7EB), width: 1),
-      ),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: () => context.push(
-            '/clients/${widget.project.clientId}'
-            '/projects/${widget.project.id}/sessions'),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          child: Row(
-            children: [
-              // ── Poignée drag ⠿ ────────────────────────────────
-              const Icon(Icons.drag_indicator,
-                  size: 20, color: Color(0xFFD1D5DB)),
-              const SizedBox(width: 12),
-              // ── Pastille statut ────────────────────────────────
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: statusColor.withAlpha(20),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(
-                  Icons.folder_outlined,
-                  color: statusColor,
-                  size: 22,
-                ),
+    final entries = ref.read(timerProjectsProvider).valueOrNull ?? [];
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        padding: EdgeInsets.fromLTRB(
+            0, 12, 0, MediaQuery.of(context).padding.bottom + 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 40,
+              height: 4,
+              margin: const EdgeInsets.only(bottom: 16),
+              decoration: BoxDecoration(
+                color: AppColors.border(context),
+                borderRadius: BorderRadius.circular(2),
               ),
-              const SizedBox(width: 14),
-              // ── Infos projet ──────────────────────────────────
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      widget.project.name,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 15,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      widget.clientName,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        color: Color(0xFF6B7280),
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              // ── Badge temps ───────────────────────────────────
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: primary.withAlpha(15),
-                  borderRadius: BorderRadius.circular(20),
-                ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Align(
+                alignment: Alignment.centerLeft,
                 child: Text(
-                  _fmtHHMMSS(totalSecs),
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    fontFeatures: const [FontFeature.tabularFigures()],
-                    color: primary,
+                  widget.project.name,
+                  style: const TextStyle(
+                      fontSize: 17, fontWeight: FontWeight.w700),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            for (final status in _kanbanStatuses)
+              ListTile(
+                leading: Container(
+                  width: 12,
+                  height: 12,
+                  decoration: BoxDecoration(
+                    color: _kanbanColors[status],
+                    shape: BoxShape.circle,
                   ),
                 ),
+                title: Text(
+                  _kanbanLabels[status]!,
+                  style: TextStyle(
+                    fontWeight: widget.project.status == status
+                        ? FontWeight.w700
+                        : FontWeight.w500,
+                  ),
+                ),
+                trailing: widget.project.status == status
+                    ? const Icon(Icons.check,
+                        color: Color(0xFF16A34A), size: 20)
+                    : null,
+                onTap: () {
+                  Navigator.pop(ctx);
+                  if (widget.project.status != status) {
+                    HapticFeedback.selectionClick();
+                    final colLen = entries
+                        .where((e) => e.project.status == status)
+                        .length;
+                    ref.read(projectsProvider.notifier).updateStatus(
+                          id: widget.project.id,
+                          clientId: widget.project.clientId,
+                          newStatus: status,
+                          sortOrder: colLen,
+                        );
+                  }
+                },
               ),
-              const SizedBox(width: 4),
-              const Icon(Icons.chevron_right,
-                  color: Color(0xFF9CA3AF), size: 20),
-            ],
-          ),
+          ],
         ),
       ),
     );
@@ -796,16 +551,102 @@ class _DraggableProjectCardState
     final totalSecs = totals[widget.project.id] ?? 0;
     final primary = Theme.of(context).colorScheme.primary;
     final screenWidth = MediaQuery.sizeOf(context).width;
-    final statusColor =
-        _kanbanColors[widget.project.status] ?? const Color(0xFF6B7280);
 
-    final cardContent = _buildCardContent(primary, totalSecs, statusColor);
+    final cardContent = Card(
+      margin: EdgeInsets.zero,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: AppColors.border(context), width: 1),
+      ),
+      child: Row(
+        children: [
+          // ── Poignée drag ⠿ ────────────────────────────────
+          ReorderableDragStartListener(
+            index: widget.index,
+            child: Container(
+              width: 40,
+              alignment: Alignment.center,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              child: Icon(Icons.drag_indicator,
+                  size: 20, color: AppColors.borderStrong(context)),
+            ),
+          ),
+          // ── Zone tappable (contenu) ───────────────────────
+          Expanded(
+            child: InkWell(
+              borderRadius: const BorderRadius.horizontal(
+                  right: Radius.circular(16)),
+              onTap: () => context.push(
+                  '/clients/${widget.project.clientId}'
+                  '/projects/${widget.project.id}/sessions'),
+              onLongPress: _showStatusSheet,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(0, 14, 16, 14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // ── Ligne 1 : nom projet + capsule durée ──
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            widget.project.name,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 15,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: primary.withAlpha(15),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Text(
+                            _fmtHHMMSS(totalSecs),
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              fontFeatures: const [
+                                FontFeature.tabularFigures()
+                              ],
+                              color: primary,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    // ── Ligne 2 : nom client gris ─────────────
+                    const SizedBox(height: 3),
+                    Text(
+                      widget.clientName,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: AppColors.textSecondary(context),
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
 
     // ── Swipe delete (colonne Terminé uniquement) ────────────────
-    Widget swipeableCard;
+    Widget child;
     if (widget.canDelete) {
       final deleteOpacity = (_swipeOffset.abs() / 80).clamp(0.0, 1.0);
-      swipeableCard = ClipRRect(
+      child = ClipRRect(
         borderRadius: BorderRadius.circular(16),
         child: Stack(
           children: [
@@ -851,115 +692,12 @@ class _DraggableProjectCardState
         ),
       );
     } else {
-      swipeableCard = cardContent;
+      child = cardContent;
     }
 
-    // ── DragTarget autour de la carte (détecte insertion haut/bas) ───
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
-      child: DragTarget<Project>(
-        onWillAcceptWithDetails: (details) =>
-            details.data.id != widget.project.id,
-        onMove: (details) {
-          final box = context.findRenderObject() as RenderBox?;
-          if (box != null) {
-            final localY = box.globalToLocal(details.offset).dy;
-            final above = localY < box.size.height / 2;
-            if (above != _insertAbove) setState(() => _insertAbove = above);
-          }
-        },
-        onAcceptWithDetails: (details) => _handleDrop(details.data),
-        builder: (context, candidates, rejected) {
-          final isHovering = candidates.isNotEmpty;
-
-          return Stack(
-            clipBehavior: Clip.none,
-            children: [
-              // ── La carte (draggable) ──
-              LongPressDraggable<Project>(
-                data: widget.project,
-                delay: const Duration(milliseconds: 300),
-                hapticFeedbackOnStart: true,
-                onDragStarted: widget.onDragStarted,
-                onDragEnd: (_) => widget.onDragEnd(),
-                onDraggableCanceled: (velocity, offset) =>
-                    widget.onDragEnd(),
-                feedback: Material(
-                  color: Colors.transparent,
-                  elevation: 12,
-                  borderRadius: BorderRadius.circular(16),
-                  child: Opacity(
-                    opacity: 0.85,
-                    child: SizedBox(
-                      width: screenWidth - 64,
-                      child: Transform.scale(
-                        scale: 0.95,
-                        child: cardContent,
-                      ),
-                    ),
-                  ),
-                ),
-                childWhenDragging:
-                    Opacity(opacity: 0.15, child: swipeableCard),
-                child: swipeableCard,
-              ),
-
-              // ── Trait d'insertion ──────────────────────────────
-              if (isHovering)
-                Positioned(
-                  left: 4,
-                  right: 4,
-                  top: _insertAbove ? -5 : null,
-                  bottom: _insertAbove ? null : -5,
-                  child: Container(
-                    height: 3,
-                    decoration: BoxDecoration(
-                      color: widget.columnColor,
-                      borderRadius: BorderRadius.circular(2),
-                      boxShadow: [
-                        BoxShadow(
-                          color: widget.columnColor.withAlpha(80),
-                          blurRadius: 4,
-                          spreadRadius: 1,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-
-              // ── Points aux extrémités du trait ────────────────
-              if (isHovering) ...[
-                Positioned(
-                  left: 0,
-                  top: _insertAbove ? -7 : null,
-                  bottom: _insertAbove ? null : -7,
-                  child: Container(
-                    width: 8,
-                    height: 8,
-                    decoration: BoxDecoration(
-                      color: widget.columnColor,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                ),
-                Positioned(
-                  right: 0,
-                  top: _insertAbove ? -7 : null,
-                  bottom: _insertAbove ? null : -7,
-                  child: Container(
-                    width: 8,
-                    height: 8,
-                    decoration: BoxDecoration(
-                      color: widget.columnColor,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                ),
-              ],
-            ],
-          );
-        },
-      ),
+      child: child,
     );
   }
 }
@@ -990,7 +728,7 @@ class _ClientPickerSheet extends ConsumerWidget {
             height: 4,
             margin: const EdgeInsets.only(bottom: 16),
             decoration: BoxDecoration(
-              color: const Color(0xFFE5E7EB),
+              color: AppColors.border(context),
               borderRadius: BorderRadius.circular(2),
             ),
           ),
@@ -1044,11 +782,11 @@ class _ClientPickerSheet extends ConsumerWidget {
                   ),
                   subtitle: subtitle.isNotEmpty
                       ? Text(subtitle,
-                          style: const TextStyle(
-                              fontSize: 12, color: Color(0xFF6B7280)))
+                          style: TextStyle(
+                              fontSize: 12, color: AppColors.textSecondary(context)))
                       : null,
-                  trailing: const Icon(Icons.chevron_right,
-                      color: Color(0xFF9CA3AF)),
+                  trailing: Icon(Icons.chevron_right,
+                      color: AppColors.textTertiary(context)),
                   onTap: () => Navigator.pop(context, c.id),
                 );
               },

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../core/theme/app_colors.dart';
 
 // ── Remplace par ton Web Client ID Google Cloud Console ──────────────────────
 // APIs & Services → Credentials → OAuth 2.0 Client IDs → type "Web application"
@@ -144,8 +145,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               // ── Logo + tagline ───────────────────────────────────────
+                  Image.asset(
+                    'assets/ChronoFacture.png',
+                    width: 72,
+                    height: 72,
+                  ),
+                  const SizedBox(height: 16),
                   Text(
-                    'TimeToInvoice',
+                    'ChronoFacture',
                     style: theme.textTheme.headlineMedium?.copyWith(
                       fontWeight: FontWeight.w800,
                       color: theme.colorScheme.primary,
@@ -155,7 +162,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   Text(
                     'Timer → Facture conforme FR en 1 tap.',
                     style: theme.textTheme.bodyMedium?.copyWith(
-                      color: const Color(0xFF6B7280),
+                      color: AppColors.textSecondary(context),
                     ),
                   ),
                   const SizedBox(height: 36),
@@ -176,7 +183,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         child: Text(
                           'ou',
                           style: theme.textTheme.bodySmall?.copyWith(
-                            color: const Color(0xFF9CA3AF),
+                            color: AppColors.textTertiary(context),
                           ),
                         ),
                       ),
@@ -223,7 +230,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         child: Text(
                           'Mot de passe oublié ?',
                           style: theme.textTheme.bodySmall?.copyWith(
-                            color: const Color(0xFF6B7280),
+                            color: AppColors.textSecondary(context),
                           ),
                         ),
                       ),
@@ -297,6 +304,8 @@ class _GoogleButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return SizedBox(
       height: 52,
       width: double.infinity,
@@ -305,29 +314,29 @@ class _GoogleButton extends StatelessWidget {
         style: OutlinedButton.styleFrom(
           shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(14)),
-          side: const BorderSide(color: Color(0xFFE5E7EB), width: 1.5),
-          backgroundColor: Colors.white,
-          foregroundColor: const Color(0xFF374151),
+          side: BorderSide(color: AppColors.border(context), width: 1.5),
+          backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+          foregroundColor: AppColors.textBody(context),
           padding: EdgeInsets.zero,
         ),
         child: loading
-            ? const SizedBox(
+            ? SizedBox(
                 height: 20,
                 width: 20,
                 child: CircularProgressIndicator(
-                    strokeWidth: 2, color: Color(0xFF374151)),
+                    strokeWidth: 2, color: AppColors.textBody(context)),
               )
             : Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   _GoogleLogo(),
                   const SizedBox(width: 10),
-                  const Text(
+                  Text(
                     'Continuer avec Google',
                     style: TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.w500,
-                      color: Color(0xFF374151),
+                      color: AppColors.textBody(context),
                     ),
                   ),
                 ],

@@ -12,7 +12,7 @@ class InvoicesNotifier extends AsyncNotifier<List<Invoice>> {
     final supabase = ref.read(supabaseClientProvider);
     final data = await supabase
         .from('invoices')
-        .select('*, clients(name)')
+        .select('*, clients(name, email)')
         .order('created_at', ascending: false);
     return data.map((j) => Invoice.fromJson(j)).toList();
   }

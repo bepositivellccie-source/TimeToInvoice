@@ -19,6 +19,9 @@ import '../../core/utils/invoice_number.dart';
 import '../../core/utils/invoice_pdf.dart';
 import '../../core/utils/paywall_gate.dart';
 
+// TODO: false avant release
+const bool kAdminMode = true;
+
 class InvoiceScreen extends ConsumerStatefulWidget {
   final String projectId;
 
@@ -206,7 +209,9 @@ class _InvoiceScreenState extends ConsumerState<InvoiceScreen> {
     String? buyerEmail,
   }) async {
     // Vérifier le quota freemium avant de générer
-    if (!await checkInvoiceQuota(context, ref)) return;
+    if (!kAdminMode) {
+      if (!await checkInvoiceQuota(context, ref)) return;
+    }
 
     setState(() => _generating = true);
     try {

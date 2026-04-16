@@ -64,6 +64,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
             0 => _StepView(
                 key: const ValueKey(0),
                 stepIndex: 0,
+                totalSteps: 4,
                 icon: Icons.people_outline,
                 title: 'Crée ton premier client',
                 subtitle:
@@ -75,6 +76,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
             1 => _StepView(
                 key: const ValueKey(1),
                 stepIndex: 1,
+                totalSteps: 4,
                 icon: Icons.folder_outlined,
                 title: 'Crée ton premier projet',
                 subtitle:
@@ -83,9 +85,26 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                 onCta: _createProject,
                 onSkip: _skip,
               ),
-            _ => _StepView(
+            2 => _StepView(
                 key: const ValueKey(2),
                 stepIndex: 2,
+                totalSteps: 4,
+                icon: Icons.verified_outlined,
+                title: 'E-facturation obligatoire',
+                subtitle:
+                    'Dès septembre 2026, la facturation électronique '
+                    'devient obligatoire en France.\n\n'
+                    'ChronoFacture génère des factures au format '
+                    'Factur-X (EN 16931), le standard européen.\n\n'
+                    'Vous êtes déjà conforme.',
+                ctaLabel: 'Compris',
+                onCta: _next,
+                onSkip: _skip,
+              ),
+            _ => _StepView(
+                key: const ValueKey(3),
+                stepIndex: 3,
+                totalSteps: 4,
                 icon: Icons.timer_outlined,
                 title: 'Lance le timer',
                 subtitle:
@@ -105,6 +124,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
 class _StepView extends StatelessWidget {
   final int stepIndex;
+  final int totalSteps;
   final IconData icon;
   final String title;
   final String subtitle;
@@ -115,6 +135,7 @@ class _StepView extends StatelessWidget {
   const _StepView({
     super.key,
     required this.stepIndex,
+    this.totalSteps = 4,
     required this.icon,
     required this.title,
     required this.subtitle,
@@ -160,7 +181,7 @@ class _StepView extends StatelessWidget {
 
           // Indicateurs d'étapes (pills)
           Row(
-            children: List.generate(3, (i) {
+            children: List.generate(totalSteps, (i) {
               final active = i == stepIndex;
               return AnimatedContainer(
                 duration: const Duration(milliseconds: 200),

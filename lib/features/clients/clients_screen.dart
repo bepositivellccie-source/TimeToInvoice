@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_svg/flutter_svg.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/models/client.dart';
 import '../../core/providers/client_display_mode_provider.dart';
 import '../../core/providers/clients_provider.dart';
+import '../../core/theme/app_colors.dart';
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
@@ -172,7 +173,7 @@ class _ClientsScreenState extends ConsumerState<ClientsScreen> {
                       borderSide: BorderSide.none,
                     ),
                     filled: true,
-                    fillColor: const Color(0xFFF3F4F6),
+                    fillColor: AppColors.surfaceFill(context),
                   ),
                 ),
               ),
@@ -184,7 +185,7 @@ class _ClientsScreenState extends ConsumerState<ClientsScreen> {
                     ? Center(
                         child: Text(
                           'Aucun résultat pour "$_query"',
-                          style: const TextStyle(color: Color(0xFF9CA3AF)),
+                          style: TextStyle(color: AppColors.textTertiary(context)),
                         ),
                       )
                     : Stack(
@@ -267,7 +268,7 @@ class _AlphaIndex extends StatelessWidget {
                         fontSize: 10,
                         fontWeight:
                             active ? FontWeight.w700 : FontWeight.w400,
-                        color: active ? primary : const Color(0xFFD1D5DB),
+                        color: active ? primary : AppColors.borderStrong(context),
                         height: 1,
                       ),
                     ),
@@ -302,40 +303,11 @@ class _ClientTile extends ConsumerStatefulWidget {
 const _kToggleArrowDuration = Duration(milliseconds: 800);
 
 class _ClientTileState extends ConsumerState<_ClientTile>
-    with TickerProviderStateMixin {
+    {
   static const _deleteRevealWidth = 72.0;
 
-  /// Positive = décalé vers la droite (fond rouge, supprimer).
-  /// Négatif = décalé vers la gauche (navigation fiche client).
   double _dragOffset = 0;
-  bool _navigating = false;
   bool _showToggleArrow = false;
-
-  late final AnimationController _slideOutCtrl;
-  VoidCallback? _slideOutListener;
-
-  @override
-  void initState() {
-    super.initState();
-    _slideOutCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 250),
-    );
-  }
-
-  @override
-  void dispose() {
-    _removeSlideOutListener();
-    _slideOutCtrl.dispose();
-    super.dispose();
-  }
-
-  void _removeSlideOutListener() {
-    if (_slideOutListener != null) {
-      _slideOutCtrl.removeListener(_slideOutListener!);
-      _slideOutListener = null;
-    }
-  }
 
   void _onToggleTap() {
     ref.read(clientDisplayModeProvider.notifier).toggle();
@@ -376,39 +348,6 @@ class _ClientTileState extends ConsumerState<_ClientTile>
     }
   }
 
-  /// Swipe gauche complet → slide la tile hors écran puis navigate.
-  void _slideOutAndNavigate() {
-    if (_navigating) return;
-    _navigating = true;
-
-    final screenWidth = MediaQuery.sizeOf(context).width;
-    final startOffset = _dragOffset;
-    final endOffset = -screenWidth;
-
-    // Retirer l'ancien listener avant d'en ajouter un nouveau
-    _removeSlideOutListener();
-    _slideOutListener = () {
-      if (!mounted) return;
-      setState(() {
-        _dragOffset = startOffset +
-            (endOffset - startOffset) * Curves.easeIn.transform(_slideOutCtrl.value);
-      });
-    };
-    _slideOutCtrl.addListener(_slideOutListener!);
-
-    _slideOutCtrl.forward(from: 0).then((_) {
-      if (!mounted) return;
-      context.push('/clients/${widget.client.id}').then((_) {
-        // Retour de la fiche → retirer le listener AVANT reset
-        if (mounted) {
-          _removeSlideOutListener();
-          _navigating = false;
-          _slideOutCtrl.reset();
-          setState(() => _dragOffset = 0);
-        }
-      });
-    });
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -423,75 +362,53 @@ class _ClientTileState extends ConsumerState<_ClientTile>
       borderRadius: BorderRadius.circular(16),
       child: Stack(
         children: [
-          // ── Fond contextuel : rouge (droite) ou vert (gauche) ──────
+          // ── Fond rouge (swipe gauche → supprimer) ──
           Positioned.fill(
             child: Container(
               decoration: BoxDecoration(
-                color: _dragOffset >= 0
-                    ? const Color(0xFFDC2626)
-                    : const Color(0xFF16A34A),
+                color: const Color(0xFFDC2626),
                 borderRadius: BorderRadius.circular(16),
               ),
-              alignment:
-                  _dragOffset >= 0 ? Alignment.centerLeft : Alignment.centerRight,
-              child: _dragOffset >= 0
-                  ? GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: _showDeleteDialog,
-                      child: const SizedBox(
-                        width: _deleteRevealWidth,
-                        child: Center(
-                          child: Icon(Icons.delete_outline,
-                              color: Colors.white, size: 26),
-                        ),
-                      ),
-                    )
-                  : const Padding(
-                      padding: EdgeInsets.only(right: 24),
-                      child: Icon(
-                        Icons.person_outline,
-                        color: Colors.white,
-                        size: 24,
-                      ),
-                    ),
+              alignment: Alignment.centerRight,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: _showDeleteDialog,
+                child: SizedBox(
+                  width: _deleteRevealWidth,
+                  child: const Center(
+                    child: Icon(LucideIcons.trash2,
+                        color: Colors.white, size: 22),
+                  ),
+                ),
+              ),
             ),
           ),
           // ── Card glissante ─────────────────────────────────────────
           AnimatedContainer(
             duration: Duration(
-                milliseconds: !_navigating &&
-                        (_dragOffset == 0 || _dragOffset == _deleteRevealWidth)
-                    ? 200
-                    : 0),
+                milliseconds:
+                    (_dragOffset == 0 || _dragOffset == -_deleteRevealWidth)
+                        ? 200
+                        : 0),
             curve: Curves.easeOut,
             transform: Matrix4.translationValues(_dragOffset, 0, 0),
             child: GestureDetector(
               onHorizontalDragUpdate: (details) {
-                if (_navigating) return;
                 setState(() {
                   _dragOffset = (_dragOffset + details.delta.dx)
-                      .clamp(-screenWidth, _deleteRevealWidth);
+                      .clamp(-screenWidth, 0.0);
                 });
               },
               onHorizontalDragEnd: (details) {
-                if (_navigating) return;
                 final velocity = details.primaryVelocity ?? 0;
 
-                // Swipe droite → snap révèle supprimer
-                if (_dragOffset > 0) {
-                  if (_dragOffset > _deleteRevealWidth * 0.4 || velocity > 300) {
-                    setState(() => _dragOffset = _deleteRevealWidth);
+                // Swipe gauche → snap révèle supprimer
+                if (_dragOffset < 0) {
+                  if (_dragOffset < -_deleteRevealWidth * 0.4 || velocity < -300) {
+                    setState(() => _dragOffset = -_deleteRevealWidth);
                   } else {
                     _resetPosition();
                   }
-                  return;
-                }
-
-                // Swipe gauche → seuil 30% ou vélocité rapide → navigate
-                if (_dragOffset < -screenWidth * 0.30 || velocity < -800) {
-                  _slideOutAndNavigate();
-                } else {
-                  _resetPosition();
                 }
               },
               child: Card(
@@ -518,31 +435,25 @@ class _ClientTileState extends ConsumerState<_ClientTile>
                                 decoration: BoxDecoration(
                                   color: isCompanyMode
                                       ? Theme.of(context).colorScheme.primary.withAlpha(20)
-                                      : const Color(0xFFF3F4F6),
+                                      : AppColors.surfaceFill(context),
                                   shape: BoxShape.circle,
                                   border: Border.all(
                                     color: isCompanyMode
                                         ? Theme.of(context).colorScheme.primary.withAlpha(60)
-                                        : const Color(0xFFE5E7EB),
+                                        : AppColors.border(context),
                                     width: 1.5,
                                   ),
                                 ),
                                 child: Center(
                                   child: AnimatedSwitcher(
                                     duration: const Duration(milliseconds: 200),
-                                    child: SvgPicture.asset(
-                                      isCompanyMode
-                                          ? 'assets/entreprise.svg'
-                                          : 'assets/client.svg',
+                                    child: Icon(
+                                      LucideIcons.userCircle2,
                                       key: ValueKey(isCompanyMode),
-                                      width: 20,
-                                      height: 20,
-                                      colorFilter: ColorFilter.mode(
-                                        isCompanyMode
-                                            ? Theme.of(context).colorScheme.primary
-                                            : const Color(0xFF6B7280),
-                                        BlendMode.srcIn,
-                                      ),
+                                      size: 22,
+                                      color: isCompanyMode
+                                          ? Theme.of(context).colorScheme.primary
+                                          : AppColors.textSecondary(context),
                                     ),
                                   ),
                                 ),
@@ -557,13 +468,15 @@ class _ClientTileState extends ConsumerState<_ClientTile>
                                   width: 44,
                                   height: 44,
                                   decoration: BoxDecoration(
-                                    color: Colors.white.withAlpha(200),
+                                    color: (Theme.of(context).brightness == Brightness.dark
+                                        ? const Color(0xFF1E293B)
+                                        : Colors.white).withAlpha(200),
                                     shape: BoxShape.circle,
                                   ),
-                                  child: const Icon(
+                                  child: Icon(
                                     Icons.swap_vert,
                                     size: 18,
-                                    color: Color(0xFF374151),
+                                    color: AppColors.textBody(context),
                                   ),
                                 ),
                               ),
@@ -612,15 +525,15 @@ class _ClientTileState extends ConsumerState<_ClientTile>
                               if (subtitle.isNotEmpty) ...[
                                 const SizedBox(height: 2),
                                 Text(subtitle,
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                         fontSize: 13,
-                                        color: Color(0xFF6B7280))),
+                                        color: AppColors.textSecondary(context))),
                               ],
                             ],
                           ),
                         ),
-                        const Icon(Icons.chevron_right,
-                            size: 20, color: Color(0xFF9CA3AF)),
+                        Icon(Icons.chevron_right,
+                            size: 20, color: AppColors.textTertiary(context)),
                       ],
                     ),
                   ),
@@ -691,7 +604,9 @@ class _ClientFormSheetState extends ConsumerState<ClientFormSheet> {
   late final TextEditingController _company;
   late final TextEditingController _firstName;
   late final TextEditingController _name;
-  late final TextEditingController _address;
+  late final TextEditingController _street;
+  late final TextEditingController _zipCode;
+  late final TextEditingController _city;
   late final TextEditingController _siret;
   late final TextEditingController _phone;
   late final TextEditingController _whatsapp;
@@ -711,14 +626,16 @@ class _ClientFormSheetState extends ConsumerState<ClientFormSheet> {
     _company = TextEditingController(text: c?.company ?? '');
     _firstName = TextEditingController(text: c?.firstName ?? '');
     _name = TextEditingController(text: c?.name ?? '');
-    _address = TextEditingController(text: c?.address ?? '');
+    _street = TextEditingController(text: c?.street ?? '');
+    _zipCode = TextEditingController(text: c?.zipCode ?? '');
+    _city = TextEditingController(text: c?.city ?? '');
     _siret = TextEditingController(text: c?.siret ?? '');
     _phone = TextEditingController(text: c?.phone ?? '');
     _whatsapp = TextEditingController(text: c?.whatsapp ?? '');
     _email = TextEditingController(text: c?.email ?? '');
     _optionalExpanded = _isEdit &&
         (c!.siret?.isNotEmpty == true ||
-            c.address?.isNotEmpty == true ||
+            c.street?.isNotEmpty == true ||
             c.phone?.isNotEmpty == true ||
             c.whatsapp?.isNotEmpty == true ||
             c.email?.isNotEmpty == true);
@@ -727,7 +644,7 @@ class _ClientFormSheetState extends ConsumerState<ClientFormSheet> {
   @override
   void dispose() {
     for (final ctrl in [
-      _company, _firstName, _name, _address, _siret, _phone, _whatsapp, _email
+      _company, _firstName, _name, _street, _zipCode, _city, _siret, _phone, _whatsapp, _email
     ]) {
       ctrl.dispose();
     }
@@ -746,7 +663,9 @@ class _ClientFormSheetState extends ConsumerState<ClientFormSheet> {
         firstName: _nullIfEmpty(_firstName.text),
         company: _nullIfEmpty(_company.text),
         siret: _nullIfEmpty(_siret.text),
-        address: _nullIfEmpty(_address.text),
+        street: _nullIfEmpty(_street.text),
+        zipCode: _nullIfEmpty(_zipCode.text),
+        city: _nullIfEmpty(_city.text),
         phone: _nullIfEmpty(_phone.text),
         whatsapp: _nullIfEmpty(_whatsapp.text),
         email: _nullIfEmpty(_email.text),
@@ -758,7 +677,9 @@ class _ClientFormSheetState extends ConsumerState<ClientFormSheet> {
           firstName: args.firstName,
           company: args.company,
           siret: args.siret,
-          address: args.address,
+          street: args.street,
+          zipCode: args.zipCode,
+          city: args.city,
           phone: args.phone,
           whatsapp: args.whatsapp,
           email: args.email,
@@ -769,7 +690,9 @@ class _ClientFormSheetState extends ConsumerState<ClientFormSheet> {
           firstName: args.firstName,
           company: args.company,
           siret: args.siret,
-          address: args.address,
+          street: args.street,
+          zipCode: args.zipCode,
+          city: args.city,
           phone: args.phone,
           whatsapp: args.whatsapp,
           email: args.email,
@@ -897,7 +820,7 @@ class _ClientFormSheetState extends ConsumerState<ClientFormSheet> {
 
   Widget _buildView() {
     final c = widget.existing!;
-    final hasExtra = c.address != null ||
+    final hasExtra = c.fullAddress != null ||
         c.siret != null ||
         c.phone != null ||
         c.whatsapp != null ||
@@ -914,15 +837,15 @@ class _ClientFormSheetState extends ConsumerState<ClientFormSheet> {
             bold: true,
           ),
         // Nom civil
-        _ViewRow(icon: Icons.person_outline, text: c.fullPersonName),
+        _ViewRow(icon: LucideIcons.userCircle2, text: c.fullPersonName),
         // Séparateur avant les infos complémentaires
         if (hasExtra) ...[
           const SizedBox(height: 4),
           const Divider(),
           const SizedBox(height: 4),
         ],
-        if (c.address != null)
-          _ViewRow(icon: Icons.location_on_outlined, text: c.address!),
+        if (c.fullAddress != null)
+          _ViewRow(icon: Icons.location_on_outlined, text: c.fullAddress!),
         if (c.siret != null)
           _ViewRow(icon: Icons.tag_outlined, text: 'SIRET : ${c.siret}'),
         if (c.phone != null)
@@ -1044,13 +967,43 @@ class _ClientFormSheetState extends ConsumerState<ClientFormSheet> {
           if (_optionalExpanded) ...[
             const SizedBox(height: 14),
             TextFormField(
-              controller: _address,
+              controller: _street,
               decoration: const InputDecoration(
-                labelText: 'Adresse',
-                hintText: 'ex : 12 rue de la Paix, 75001 Paris',
+                labelText: 'Rue',
+                hintText: 'ex : 12 rue de la Paix',
                 prefixIcon: Icon(Icons.location_on_outlined),
               ),
               textInputAction: TextInputAction.next,
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                SizedBox(
+                  width: 110,
+                  child: TextFormField(
+                    controller: _zipCode,
+                    decoration: const InputDecoration(
+                      labelText: 'Code postal',
+                      hintText: '75001',
+                    ),
+                    keyboardType: TextInputType.number,
+                    maxLength: 5,
+                    textInputAction: TextInputAction.next,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: TextFormField(
+                    controller: _city,
+                    decoration: const InputDecoration(
+                      labelText: 'Ville',
+                      hintText: 'Paris',
+                    ),
+                    textCapitalization: TextCapitalization.words,
+                    textInputAction: TextInputAction.next,
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 12),
             TextFormField(

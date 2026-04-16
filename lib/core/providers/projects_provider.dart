@@ -108,7 +108,6 @@ class ProjectsNotifier extends AsyncNotifier<List<Project>> {
   }) async {
     // Optimistic update
     final current = state.valueOrNull ?? [];
-    final updatedIds = {for (final p in columnProjects) p.id};
     final columnMap = {for (final cp in columnProjects) cp.id: cp};
     state = AsyncData([
       for (final p in current) columnMap[p.id] ?? p,

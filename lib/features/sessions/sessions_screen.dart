@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
@@ -24,13 +25,10 @@ class SessionsScreen extends ConsumerStatefulWidget {
 
 class _SessionsScreenState extends ConsumerState<SessionsScreen> {
   final _scrollController = ScrollController();
-  // IDs supprimés de façon optimiste — filtre les tiles avant que le provider
-  // ne revienne avec les nouvelles données, évite le bug "dismissed Dismissible
-  // still in tree" causé par un rebuild intermédiaire.
   final _pendingDeletes = <String>{};
   String? _highlightedId;
   bool _highlightScheduled = false;
-  String _timeFilter = 'all'; // 'all' | 'today' | 'week' | 'month'
+  String _timeFilter = 'all';
 
   @override
   void initState() {
@@ -44,8 +42,6 @@ class _SessionsScreenState extends ConsumerState<SessionsScreen> {
     super.dispose();
   }
 
-  /// Appelé une seule fois quand les données sont disponibles — scroll en haut
-  /// puis efface la surbrillance après 2 secondes.
   void _scheduleHighlightClear() {
     if (_highlightScheduled || _highlightedId == null) return;
     _highlightScheduled = true;
@@ -71,7 +67,6 @@ class _SessionsScreenState extends ConsumerState<SessionsScreen> {
           .from('sessions')
           .delete()
           .eq('id', sessionId);
-      // DELETE réussi — invalide le cache puis affiche le succès
       if (!mounted) return;
       ref.invalidate(sessionsByProjectProvider(widget.projectId));
       ScaffoldMessenger.of(context)
@@ -84,12 +79,37 @@ class _SessionsScreenState extends ConsumerState<SessionsScreen> {
           ),
         );
     } catch (_) {
-      // Échec réseau — annule la suppression optimiste et resync
       if (mounted) {
         setState(() => _pendingDeletes.remove(sessionId));
         ref.invalidate(sessionsByProjectProvider(widget.projectId));
       }
     }
+  }
+
+  /// Regroupe les sessions par clé "mois-année".
+  /// Trié du plus récent au plus ancien.
+  Map<String, List<WorkSession>> _groupByMonth(List<WorkSession> sessions) {
+    final map = <String, List<WorkSession>>{};
+    for (final s in sessions) {
+      final local = s.startedAt.toLocal();
+      final key = '${local.year}-${local.month.toString().padLeft(2, '0')}';
+      (map[key] ??= []).add(s);
+    }
+    // Tri des clés descendant (plus récent d'abord)
+    final sorted = Map.fromEntries(
+      map.entries.toList()..sort((a, b) => b.key.compareTo(a.key)),
+    );
+    return sorted;
+  }
+
+  String _monthLabel(String key) {
+    final parts = key.split('-');
+    final year = int.parse(parts[0]);
+    final month = int.parse(parts[1]);
+    final dt = DateTime(year, month);
+    // "Avril 2026" — capitalize first letter
+    final raw = DateFormat('MMMM yyyy', 'fr_FR').format(dt);
+    return raw[0].toUpperCase() + raw.substring(1);
   }
 
   @override
@@ -102,33 +122,63 @@ class _SessionsScreenState extends ConsumerState<SessionsScreen> {
         ?.where((p) => p.id == widget.projectId)
         .firstOrNull;
 
+    final primary = Theme.of(context).colorScheme.primary;
+
     return Scaffold(
-      appBar: AppBar(
-        title: Text(project?.name ?? 'Sessions'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () {
-            if (context.canPop()) {
-              context.pop();
-            } else {
-              context.go('/clients/${project?.clientId}');
-            }
-          },
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.receipt_long_outlined),
-            tooltip: 'Créer une facture',
-            onPressed: () =>
-                context.push('/invoices/new/${widget.projectId}'),
+      body: NestedScrollView(
+        headerSliverBuilder: (context, innerBoxIsScrolled) => [
+          SliverAppBar(
+            expandedHeight: 160,
+            pinned: true,
+            leading: IconButton(
+              icon: const Icon(LucideIcons.arrowLeft),
+              onPressed: () {
+                if (context.canPop()) {
+                  context.pop();
+                } else {
+                  context.go('/clients/${project?.clientId}');
+                }
+              },
+            ),
+            actions: [
+              IconButton(
+                icon: const Icon(LucideIcons.fileText),
+                tooltip: 'Créer une facture',
+                onPressed: () =>
+                    context.push('/invoices/new/${widget.projectId}'),
+              ),
+            ],
+            flexibleSpace: FlexibleSpaceBar(
+              title: Text(
+                project?.name ?? 'Sessions',
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 18,
+                ),
+              ),
+              titlePadding:
+                  const EdgeInsets.only(left: 56, bottom: 16, right: 56),
+              background: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      primary.withAlpha(30),
+                      primary.withAlpha(12),
+                      Colors.transparent,
+                    ],
+                    stops: const [0.0, 0.6, 1.0],
+                  ),
+                ),
+              ),
+            ),
           ),
         ],
-      ),
-      body: sessionsAsync.when(
+        body: sessionsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text('Erreur: $e')),
         data: (sessions) {
-          // Filtre optimiste — exclut les sessions en cours de suppression
           final all = sessions
               .where((s) => !_pendingDeletes.contains(s.id))
               .toList();
@@ -138,7 +188,8 @@ class _SessionsScreenState extends ConsumerState<SessionsScreen> {
           // Filtre temporel
           final now = DateTime.now();
           final today = DateTime(now.year, now.month, now.day);
-          final weekStart = today.subtract(Duration(days: today.weekday - 1));
+          final weekStart =
+              today.subtract(Duration(days: today.weekday - 1));
           final monthStart = DateTime(now.year, now.month);
 
           final displayed = _timeFilter == 'all'
@@ -157,8 +208,9 @@ class _SessionsScreenState extends ConsumerState<SessionsScreen> {
                   }
                 }).toList();
 
-          // Lance le scroll + minuterie de surbrillance une seule fois
           _scheduleHighlightClear();
+
+          final grouped = _groupByMonth(displayed);
 
           return Column(
             children: [
@@ -194,6 +246,7 @@ class _SessionsScreenState extends ConsumerState<SessionsScreen> {
                   ],
                 ),
               ),
+              const SizedBox(height: 4),
               Expanded(
                 child: displayed.isEmpty
                     ? Center(
@@ -202,27 +255,51 @@ class _SessionsScreenState extends ConsumerState<SessionsScreen> {
                           child: Text(
                             'Aucune session sur cette période',
                             style: TextStyle(
-                                color: const Color(0xFF9CA3AF),
+                                color: AppColors.textTertiary(context),
                                 fontSize: 14),
                           ),
                         ),
                       )
-                    : ListView.separated(
+                    : ListView.builder(
                         controller: _scrollController,
-                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-                        itemCount: displayed.length,
-                        separatorBuilder: (context, index) =>
-                            const SizedBox(height: 8),
-                        itemBuilder: (context, i) {
-                          final session = displayed[i];
-                          return _SessionTile(
-                            session: session,
-                            index: i + 1,
-                            isHighlighted: _highlightedId == session.id,
-                            onDelete: () {
-                              setState(() => _pendingDeletes.add(session.id));
-                              _deleteSession(session.id);
-                            },
+                        padding: const EdgeInsets.fromLTRB(0, 4, 0, 32),
+                        itemCount: grouped.length,
+                        itemBuilder: (context, gi) {
+                          final key = grouped.keys.elementAt(gi);
+                          final monthSessions = grouped[key]!;
+                          final label = _monthLabel(key);
+                          final totalSecs = monthSessions.fold<int>(
+                              0, (sum, s) => sum + s.workedSeconds);
+
+                          return _MonthSection(
+                            label: label,
+                            sessionCount: monthSessions.length,
+                            totalSeconds: totalSecs,
+                            initiallyExpanded: gi == 0,
+                            children: [
+                              for (int i = 0;
+                                  i < monthSessions.length;
+                                  i++) ...[
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 16),
+                                  child: _SessionTile(
+                                    session: monthSessions[i],
+                                    isHighlighted:
+                                        _highlightedId == monthSessions[i].id,
+                                    hourlyRate: project?.hourlyRate ?? 0,
+                                    currency: project?.currency ?? 'EUR',
+                                    onDelete: () {
+                                      setState(() => _pendingDeletes
+                                          .add(monthSessions[i].id));
+                                      _deleteSession(monthSessions[i].id);
+                                    },
+                                  ),
+                                ),
+                                if (i < monthSessions.length - 1)
+                                  const SizedBox(height: 8),
+                              ],
+                            ],
                           );
                         },
                       ),
@@ -231,11 +308,90 @@ class _SessionsScreenState extends ConsumerState<SessionsScreen> {
           );
         },
       ),
+      ),
     );
   }
 }
 
-// ─── Summary ──────────────────────────────────────────────────────────────────
+// ─── Month section (pliable/dépliable) ─────────────────────────────────────
+
+class _MonthSection extends StatelessWidget {
+  final String label;
+  final int sessionCount;
+  final int totalSeconds;
+  final bool initiallyExpanded;
+  final List<Widget> children;
+
+  const _MonthSection({
+    required this.label,
+    required this.sessionCount,
+    required this.totalSeconds,
+    required this.initiallyExpanded,
+    required this.children,
+  });
+
+  static String _fmtHM(int secs) {
+    final h = secs ~/ 3600;
+    final m = (secs % 3600) ~/ 60;
+    if (h > 0) return '${h}h${m.toString().padLeft(2, '0')}';
+    return '${m}min';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Theme(
+      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+      child: ExpansionTile(
+        initiallyExpanded: initiallyExpanded,
+        tilePadding: const EdgeInsets.symmetric(horizontal: 20),
+        childrenPadding: const EdgeInsets.only(bottom: 12),
+        title: Row(
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textSecondary(context),
+                letterSpacing: 0.2,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: Theme.of(context)
+                    .colorScheme
+                    .primary
+                    .withAlpha(15),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                '$sessionCount',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+              ),
+            ),
+            const Spacer(),
+            Text(
+              _fmtHM(totalSeconds),
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textTertiary(context),
+              ),
+            ),
+          ],
+        ),
+        children: children,
+      ),
+    );
+  }
+}
 
 // ─── Filter chip ─────────────────────────────────────────────────────────────
 
@@ -261,7 +417,7 @@ class _FilterChip extends StatelessWidget {
         decoration: BoxDecoration(
           color: selected ? color.withAlpha(25) : Colors.transparent,
           border: Border.all(
-            color: selected ? color : const Color(0xFFE5E7EB),
+            color: selected ? color : AppColors.border(context),
             width: selected ? 1.5 : 1,
           ),
           borderRadius: BorderRadius.circular(20),
@@ -271,7 +427,7 @@ class _FilterChip extends StatelessWidget {
           style: TextStyle(
             fontSize: 12,
             fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-            color: selected ? color : const Color(0xFF6B7280),
+            color: selected ? color : AppColors.textSecondary(context),
           ),
         ),
       ),
@@ -309,8 +465,10 @@ class _SessionSummary extends StatelessWidget {
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Temps travaillé',
-                  style: TextStyle(fontSize: 12, color: Color(0xFF6B7280))),
+              Text('Temps travaillé',
+                  style: TextStyle(
+                      fontSize: 12,
+                      color: AppColors.textSecondary(context))),
               Text(
                 timeStr,
                 style: const TextStyle(
@@ -321,8 +479,10 @@ class _SessionSummary extends StatelessWidget {
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              const Text('Sessions',
-                  style: TextStyle(fontSize: 12, color: Color(0xFF6B7280))),
+              Text('Sessions',
+                  style: TextStyle(
+                      fontSize: 12,
+                      color: AppColors.textSecondary(context))),
               Text(
                 '${sessions.length}',
                 style: const TextStyle(
@@ -336,19 +496,21 @@ class _SessionSummary extends StatelessWidget {
   }
 }
 
-// ─── Session tile — Swipe gauche → fond rouge + icône poubelle → dialog ─────
+// ─── Session tile ────────────────────────────────────────────────────────────
 
 class _SessionTile extends StatefulWidget {
   final WorkSession session;
-  final int index;
   final bool isHighlighted;
   final VoidCallback onDelete;
+  final double hourlyRate;
+  final String currency;
 
   const _SessionTile({
     required this.session,
-    required this.index,
     required this.isHighlighted,
     required this.onDelete,
+    required this.hourlyRate,
+    this.currency = 'EUR',
   });
 
   @override
@@ -356,15 +518,24 @@ class _SessionTile extends StatefulWidget {
 }
 
 class _SessionTileState extends State<_SessionTile> {
-  /// Offset horizontal continu (négatif = swipe gauche).
   double _dragOffset = 0;
   bool _dialogShown = false;
 
   static String _fmtTime(DateTime dt) =>
       DateFormat('HH:mm').format(dt.toLocal());
 
-  static String _fmtDate(DateTime dt) =>
-      DateFormat('d MMM', 'fr_FR').format(dt.toLocal());
+  /// "Lundi 14 avril" — ajoute l'année si différente de l'année en cours
+  static String _fmtDayFull(DateTime dt) {
+    final local = dt.toLocal();
+    final now = DateTime.now();
+    // "lundi 14 avril"
+    final raw = DateFormat('EEEE d MMMM', 'fr_FR').format(local);
+    final capitalized = raw[0].toUpperCase() + raw.substring(1);
+    if (local.year != now.year) {
+      return '$capitalized ${local.year}';
+    }
+    return capitalized;
+  }
 
   static String _fmtHHMMSS(int secs) {
     final h = (secs ~/ 3600).toString().padLeft(2, '0');
@@ -411,35 +582,45 @@ class _SessionTileState extends State<_SessionTile> {
     final startStr = _fmtTime(session.startedAt);
     final endStr =
         session.endedAt != null ? _fmtTime(session.endedAt!) : '—';
-    final dateStr = _fmtDate(session.startedAt);
+    final dayStr = _fmtDayFull(session.startedAt);
     final durationStr = _fmtHHMMSS(session.workedSeconds);
+    final amount = (session.workedSeconds / 3600.0) * widget.hourlyRate;
+    final symbol = const {
+          'EUR': '€',
+          'USD': '\$',
+          'GBP': '£',
+          'CHF': 'CHF',
+        }[widget.currency] ??
+        widget.currency;
+    final amountStr =
+        '${amount.toStringAsFixed(2).replaceAll('.', ',')} $symbol';
     final screenWidth = MediaQuery.sizeOf(context).width;
 
-    // Opacité progressive de l'icône poubelle (apparaît après 30px de swipe)
+    // Swipe droite → gauche : offset négatif
     final deleteOpacity = (_dragOffset.abs() / 80).clamp(0.0, 1.0);
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(14),
       child: Stack(
         children: [
-          // ── Fond rouge continu ──────────────────────────────────────
-          if (_dragOffset < 0)
+          // ── Fond rouge (visible quand swipe vers la droite) ─────────
+          if (_dragOffset > 0)
             Positioned.fill(
               child: Container(
                 decoration: BoxDecoration(
                   color: AppColors.danger,
                   borderRadius: BorderRadius.circular(14),
                 ),
-                alignment: Alignment.centerRight,
-                padding: const EdgeInsets.only(right: 24),
+                alignment: Alignment.centerLeft,
+                padding: const EdgeInsets.only(left: 24),
                 child: Opacity(
                   opacity: deleteOpacity,
-                  child: const Icon(Icons.delete_outline,
-                      color: Colors.white, size: 26),
+                  child: const Icon(LucideIcons.trash2,
+                      color: Colors.white, size: 22),
                 ),
               ),
             ),
-          // ── Card glissante — geste continu fluide ───────────────────
+          // ── Card glissante ─────────────────────────────────────────
           AnimatedContainer(
             duration: Duration(milliseconds: _dragOffset == 0 ? 200 : 0),
             curve: Curves.easeOut,
@@ -447,14 +628,14 @@ class _SessionTileState extends State<_SessionTile> {
             child: GestureDetector(
               onHorizontalDragUpdate: (details) {
                 setState(() {
+                  // Uniquement vers la droite (positif)
                   _dragOffset = (_dragOffset + details.delta.dx)
-                      .clamp(-screenWidth, 0.0);
+                      .clamp(0.0, screenWidth);
                 });
               },
               onHorizontalDragEnd: (details) {
                 final velocity = details.primaryVelocity ?? 0;
-                // Seuil : 30% de l'écran ou vélocité rapide → confirmation
-                if (_dragOffset < -screenWidth * 0.30 || velocity < -800) {
+                if (_dragOffset > screenWidth * 0.30 || velocity > 800) {
                   _confirmDelete();
                 } else {
                   setState(() => _dragOffset = 0);
@@ -465,8 +646,15 @@ class _SessionTileState extends State<_SessionTile> {
                 curve: Curves.easeOut,
                 decoration: BoxDecoration(
                   color: widget.isHighlighted
-                      ? const Color(0xFFFEF9C3)
-                      : AppColors.primarySurf,
+                      ? (Theme.of(context).brightness == Brightness.dark
+                          ? const Color(0xFF422006)
+                          : const Color(0xFFFEF9C3))
+                      : (Theme.of(context).brightness == Brightness.dark
+                          ? Theme.of(context)
+                              .colorScheme
+                              .primary
+                              .withAlpha(20)
+                          : AppColors.primarySurf),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
                     color: widget.isHighlighted
@@ -480,50 +668,104 @@ class _SessionTileState extends State<_SessionTile> {
                       horizontal: 14, vertical: 12),
                   child: Row(
                     children: [
-                      // ── Horaires + date ───────────────────────────
+                      // ── Contenu 2 lignes ────────────────────────
                       Expanded(
                         child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
                           children: [
-                            Text(
-                              '$startStr → $endStr  ·  $dateStr',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w500,
-                                fontSize: 14,
-                                color: AppColors.textDark,
-                              ),
+                            // Ligne 1 — date gras + capsule durée
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    dayStr,
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 14,
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .onSurface,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 10, vertical: 3),
+                                  decoration: BoxDecoration(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .primary
+                                        .withAlpha(18),
+                                    borderRadius:
+                                        BorderRadius.circular(20),
+                                  ),
+                                  child: Text(
+                                    durationStr,
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 12,
+                                      fontFeatures: const [
+                                        FontFeature.tabularFigures()
+                                      ],
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .primary,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 4),
+                            // Ligne 2 — horaires + montant
+                            Row(
+                              children: [
+                                Text(
+                                  'de $startStr à $endStr',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color:
+                                        AppColors.textSecondary(context),
+                                  ),
+                                ),
+                                const Spacer(),
+                                Text(
+                                  amountStr,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color:
+                                        AppColors.textSecondary(context),
+                                  ),
+                                ),
+                              ],
                             ),
                             if (session.notes != null &&
                                 session.notes!.isNotEmpty) ...[
                               const SizedBox(height: 2),
-                              Text(
-                                session.notes!,
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  color: AppColors.textMuted,
-                                  fontStyle: FontStyle.italic,
+                              Align(
+                                alignment: Alignment.centerLeft,
+                                child: Text(
+                                  session.notes!,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color:
+                                        AppColors.textTertiary(context),
+                                    fontStyle: FontStyle.italic,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
                               ),
                             ],
                           ],
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      // ── Durée ─────────────────────────────────────
-                      Text(
-                        durationStr,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w500,
-                          fontSize: 13,
-                          fontFeatures: [FontFeature.tabularFigures()],
-                          color: AppColors.primary,
-                        ),
-                      ),
                       const SizedBox(width: 4),
-                      const Icon(Icons.chevron_right,
-                          color: AppColors.textMuted, size: 18),
+                      const Icon(LucideIcons.chevronRight,
+                          color: Color(0xFF9CA3AF), size: 16),
                     ],
                   ),
                 ),
@@ -543,22 +785,23 @@ class _EmptySessions extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Center(
+    return Center(
       child: Padding(
-        padding: EdgeInsets.all(32),
+        padding: const EdgeInsets.all(32),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.history, size: 64, color: Color(0xFF9CA3AF)),
-            SizedBox(height: 16),
-            Text('Aucune session',
+            Icon(LucideIcons.clock,
+                size: 64, color: AppColors.textTertiary(context)),
+            const SizedBox(height: 16),
+            const Text('Aucune session',
                 style:
                     TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
-            SizedBox(height: 8),
+            const SizedBox(height: 8),
             Text(
-              'Démarrez le timer depuis l\'onglet Timer pour créer des sessions.',
+              'Démarrez le chrono depuis l\'onglet Chrono pour créer des sessions.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: Color(0xFF6B7280)),
+              style: TextStyle(color: AppColors.textSecondary(context)),
             ),
           ],
         ),

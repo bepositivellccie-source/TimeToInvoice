@@ -1,9 +1,11 @@
 import 'dart:typed_data';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import '../models/invoice_data.dart';
+import 'facturx_xml.dart';
 
 // ─── Couleurs ─────────────────────────────────────────────────────────────────
 const _blue = PdfColor.fromInt(0xFF1A56DB);
@@ -14,7 +16,8 @@ const _gray500 = PdfColor.fromInt(0xFF6B7280);
 const _gray700 = PdfColor.fromInt(0xFF374151);
 const _gray900 = PdfColor.fromInt(0xFF111827);
 
-/// Génère un PDF de facture conforme au droit français.
+/// Génère un PDF/A-3b Factur-X conforme avec XML EN 16931 embarqué.
+///
 /// Mentions légales incluses :
 ///  – Numéro séquentiel unique YYYY-NNN
 ///  – Date d'émission, infos vendeur/acheteur, SIRET
@@ -22,13 +25,40 @@ const _gray900 = PdfColor.fromInt(0xFF111827);
 ///  – Total HT / TVA / TTC
 ///  – "TVA non applicable, art. 293 B du CGI"
 ///  – Conditions de règlement + pénalités de retard (art. L. 441-10 C. Com.)
+///  – XML Factur-X embarqué (profil MINIMUM, conforme EN 16931)
 Future<Uint8List> buildInvoicePdf(InvoiceData inv) async {
+  // ── Factur-X XML ──
+  final facturXml = buildFacturXml(inv);
+
+  // ── PDF/A-3 metadata ──
   final doc = pw.Document(
     title: 'Facture ${inv.invoiceNumber}',
     author: inv.sellerName,
+    metadata: PdfaRdf(
+      title: 'Facture ${inv.invoiceNumber}',
+      author: inv.sellerName,
+      creator: 'ChronoFacture',
+      producer: 'ChronoFacture — pdf/dart',
+      subject: 'Facture ${inv.invoiceNumber}',
+      invoiceRdf: PdfaFacturxRdf().create(
+        conformanceLevel: 'MINIMUM',
+      ),
+    ).create(),
   );
 
-  // Fonts — Noto Sans supporte tous les caractères FR
+  // ── ICC color profile (requis pour PDF/A) ──
+  final iccData = await rootBundle.load('assets/sRGB2014.icc');
+  PdfaColorProfile(doc.document, iccData.buffer.asUint8List());
+
+  // ── Embarquer le XML Factur-X ──
+  PdfaAttachedFiles(doc.document, [
+    PdfaAttachedFile(
+      name: 'factur-x.xml',
+      data: facturXml,
+    ),
+  ]);
+
+  // Fonts — Noto Sans supporte tous les caractères FR (TTF embarquées = PDF/A OK)
   final regular = await PdfGoogleFonts.notoSansRegular();
   final bold = await PdfGoogleFonts.notoSansBold();
   final italic = await PdfGoogleFonts.notoSansItalic();
@@ -87,6 +117,9 @@ Future<Uint8List> buildInvoicePdf(InvoiceData inv) async {
                     pw.Text(inv.sellerAddress!, style: r(9, c: _gray700)),
                   if (inv.sellerSiret != null)
                     pw.Text('SIRET : ${inv.sellerSiret}',
+                        style: r(9, c: _gray700)),
+                  if (inv.sellerVatNumber != null)
+                    pw.Text('TVA : ${inv.sellerVatNumber}',
                         style: r(9, c: _gray700)),
                 ],
               ),
@@ -239,6 +272,12 @@ Future<Uint8List> buildInvoicePdf(InvoiceData inv) async {
                 'de 40 € sera également due (art. L. 441-10 et D. 441-5 du Code de Commerce).',
                 style: r(8, c: _gray700),
               ),
+              pw.SizedBox(height: 6),
+              // Factur-X
+              pw.Text(
+                'Format Factur-X / EN 16931 — XML CII embarqué (profil MINIMUM)',
+                style: pw.TextStyle(font: italic, fontSize: 7, color: _gray500),
+              ),
             ],
           ),
         ),
@@ -315,7 +354,7 @@ pw.Widget _footer(
     child: pw.Row(
       mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
       children: [
-        pw.Text('Document généré par TimeToInvoice',
+        pw.Text('Document généré par ChronoFacture — Factur-X conforme',
             style: pw.TextStyle(font: font, fontSize: 7, color: color)),
         pw.Text('Page ${ctx.pageNumber} / ${ctx.pagesCount}',
             style: pw.TextStyle(font: font, fontSize: 7, color: color)),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
@@ -9,6 +10,7 @@ import '../../core/models/project.dart';
 import '../../core/providers/invoices_provider.dart';
 import '../../core/providers/projects_provider.dart';
 import '../../core/providers/sessions_provider.dart';
+import '../../core/theme/app_colors.dart';
 import '../../core/theme/design_tokens.dart';
 import '../timer/timer_notifier.dart';
 
@@ -107,15 +109,11 @@ class _HomeHeader extends ConsumerWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                // Grille de points (3x3 dots)
-                SizedBox(
-                  width: 28,
-                  height: 28,
-                  child: CustomPaint(
-                    painter: _DotGridPainter(
-                      color: Colors.white.withAlpha(180),
-                    ),
-                  ),
+                // Logo ChronoFacture
+                Image.asset(
+                  'assets/ChronoFacture.png',
+                  width: 32,
+                  height: 32,
                 ),
                 // Cloche notification
                 Container(
@@ -269,32 +267,6 @@ class _StatCapsule extends StatelessWidget {
   }
 }
 
-// ─── Grille de points décoratifs ────────────────────────────────────────────
-
-class _DotGridPainter extends CustomPainter {
-  final Color color;
-
-  _DotGridPainter({required this.color});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()..color = color;
-    const cols = 3;
-    const rows = 3;
-    final dx = size.width / (cols - 1);
-    final dy = size.height / (rows - 1);
-
-    for (int r = 0; r < rows; r++) {
-      for (int c = 0; c < cols; c++) {
-        canvas.drawCircle(Offset(c * dx, r * dy), 2.2, paint);
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
 // ─── Clipper vague asymétrique ──────────────────────────────────────────────
 // Bas-gauche : convexe (bosse qui remonte vers le centre)
 // Bas-droite : concave (creux qui descend)
@@ -415,7 +387,10 @@ class _ProjectCarouselState extends ConsumerState<_ProjectCarousel> {
               final project = entry.project;
               final clientName = entry.clientName;
               final totalSecs = totals[project.id] ?? 0;
-              final hours = (totalSecs / 3600).toStringAsFixed(1);
+              final hh = totalSecs ~/ 3600;
+              final mm = (totalSecs % 3600) ~/ 60;
+              final ss = totalSecs % 60;
+              final timeStr = '${hh.toString().padLeft(2, '0')}:${mm.toString().padLeft(2, '0')}:${ss.toString().padLeft(2, '0')}';
               final cardColor = _cardColor(project, activeTimerProjectId);
 
               // Scale : 1.0 pour la page centrale, 0.88 pour les latérales
@@ -503,7 +478,7 @@ class _ProjectCarouselState extends ConsumerState<_ProjectCarousel> {
                                   ),
                                   const SizedBox(width: 4),
                                   Text(
-                                    '${hours}h',
+                                    timeStr,
                                     style: GoogleFonts.plusJakartaSans(
                                       fontSize: 13,
                                       fontWeight: FontWeight.w700,
@@ -728,12 +703,12 @@ class _DashboardKpi extends ConsumerWidget {
           ),
           const SizedBox(width: 10),
           _KpiCard(
-            icon: Icons.receipt_long_outlined,
+            icon: LucideIcons.fileText,
             label: 'En attente',
             value: '$pending',
             color: pending > 0
                 ? const Color(0xFFEA580C)
-                : const Color(0xFF6B7280),
+                : AppColors.textSecondary(context),
             isDark: isDark,
           ),
         ],
@@ -792,7 +767,7 @@ class _KpiCard extends StatelessWidget {
               style: GoogleFonts.plusJakartaSans(
                 fontSize: 11,
                 fontWeight: FontWeight.w500,
-                color: const Color(0xFF9CA3AF),
+                color: AppColors.textTertiary(context),
               ),
             ),
           ],

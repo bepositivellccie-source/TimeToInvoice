@@ -48,12 +48,12 @@ Future<void> main() async {
 
   runApp(ProviderScope(
     overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
-    child: const TimeToInvoiceApp(),
+    child: const ChronoFactureApp(),
   ));
 }
 
-class TimeToInvoiceApp extends ConsumerWidget {
-  const TimeToInvoiceApp({super.key});
+class ChronoFactureApp extends ConsumerWidget {
+  const ChronoFactureApp({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -61,7 +61,7 @@ class TimeToInvoiceApp extends ConsumerWidget {
     final themeMode = ref.watch(themeModeProvider);
 
     return MaterialApp.router(
-      title: 'TimeToInvoice',
+      title: 'ChronoFacture',
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,
       themeMode: themeMode,

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/providers/projects_provider.dart';
+import '../../core/theme/app_colors.dart';
 import '../../core/providers/sessions_provider.dart';
 
 class ProjectSelectScreen extends ConsumerStatefulWidget {
@@ -30,7 +31,7 @@ class _ProjectSelectScreenState extends ConsumerState<ProjectSelectScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Choisir un chantier'),
+        title: const Text('Choisir un projet'),
         centerTitle: false,
       ),
       body: Column(
@@ -44,7 +45,7 @@ class _ProjectSelectScreenState extends ConsumerState<ProjectSelectScreen> {
               autofocus: false,
               textInputAction: TextInputAction.search,
               decoration: InputDecoration(
-                hintText: 'Rechercher un chantier ou un client…',
+                hintText: 'Rechercher un projet ou un client…',
                 prefixIcon: const Icon(Icons.search, size: 20),
                 suffixIcon: _query.isNotEmpty
                     ? IconButton(
@@ -61,7 +62,7 @@ class _ProjectSelectScreenState extends ConsumerState<ProjectSelectScreen> {
                   borderSide: BorderSide.none,
                 ),
                 filled: true,
-                fillColor: const Color(0xFFF3F4F6),
+                fillColor: AppColors.surfaceFill(context),
                 contentPadding: const EdgeInsets.symmetric(vertical: 12),
               ),
               onChanged: (v) => setState(() => _query = v.toLowerCase()),
@@ -87,10 +88,10 @@ class _ProjectSelectScreenState extends ConsumerState<ProjectSelectScreen> {
                 ),
                 const SizedBox(width: 8),
                 _StatusChip(
-                  label: 'Terminé',
-                  selected: _statusFilter == 'completed',
-                  activeColor: const Color(0xFF6B7280),
-                  onTap: () => setState(() => _statusFilter = 'completed'),
+                  label: 'En attente',
+                  selected: _statusFilter == 'pending',
+                  activeColor: const Color(0xFFF59E0B),
+                  onTap: () => setState(() => _statusFilter = 'pending'),
                 ),
               ],
             ),
@@ -111,23 +112,27 @@ class _ProjectSelectScreenState extends ConsumerState<ProjectSelectScreen> {
               ),
               data: (entries) {
                 if (entries.isEmpty) {
-                  return const Center(
+                  return Center(
                     child: Padding(
-                      padding: EdgeInsets.all(32),
+                      padding: const EdgeInsets.all(32),
                       child: Text(
                         'Aucun projet — créez un client puis un projet dans l\'onglet Clients',
                         textAlign: TextAlign.center,
-                        style: TextStyle(color: Color(0xFF9CA3AF)),
+                        style: TextStyle(color: AppColors.textTertiary(context)),
                       ),
                     ),
                   );
                 }
 
                 final filtered = entries.where((e) {
-                  if (_statusFilter == 'active' && !e.project.isActive) {
+                  // Exclure les projets terminés du sélecteur timer
+                  if (e.project.status == 'termine') return false;
+                  if (_statusFilter == 'active' &&
+                      e.project.status != 'en_cours') {
                     return false;
                   }
-                  if (_statusFilter == 'completed' && e.project.isActive) {
+                  if (_statusFilter == 'pending' &&
+                      e.project.status != 'en_attente') {
                     return false;
                   }
                   if (_query.isNotEmpty) {
@@ -140,10 +145,10 @@ class _ProjectSelectScreenState extends ConsumerState<ProjectSelectScreen> {
                 }).toList();
 
                 if (filtered.isEmpty) {
-                  return const Center(
+                  return Center(
                     child: Text(
                       'Aucun résultat',
-                      style: TextStyle(color: Color(0xFF9CA3AF)),
+                      style: TextStyle(color: AppColors.textTertiary(context)),
                     ),
                   );
                 }
@@ -202,7 +207,7 @@ class _StatusChip extends StatelessWidget {
         decoration: BoxDecoration(
           color: selected ? color.withAlpha(25) : Colors.transparent,
           border: Border.all(
-            color: selected ? color : const Color(0xFFE5E7EB),
+            color: selected ? color : AppColors.border(context),
             width: selected ? 1.5 : 1,
           ),
           borderRadius: BorderRadius.circular(20),
@@ -213,7 +218,7 @@ class _StatusChip extends StatelessWidget {
             fontSize: 13,
             fontWeight:
                 selected ? FontWeight.w700 : FontWeight.w500,
-            color: selected ? color : const Color(0xFF6B7280),
+            color: selected ? color : AppColors.textSecondary(context),
           ),
         ),
       ),
@@ -251,8 +256,10 @@ class _ProjectCard extends StatelessWidget {
             ? const Color(0xFF16A34A)
             : const Color(0xFF9CA3AF);
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Material(
-      color: Colors.white,
+      color: isDark ? const Color(0xFF1E293B) : Colors.white,
       borderRadius: BorderRadius.circular(14),
       child: InkWell(
         onTap: onTap,
@@ -261,7 +268,7 @@ class _ProjectCard extends StatelessWidget {
           padding:
               const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           decoration: BoxDecoration(
-            border: Border.all(color: const Color(0xFFE5E7EB)),
+            border: Border.all(color: AppColors.border(context)),
             borderRadius: BorderRadius.circular(14),
           ),
           child: Row(
@@ -271,17 +278,17 @@ class _ProjectCard extends StatelessWidget {
                 width: 44,
                 height: 44,
                 decoration: BoxDecoration(
-                  color: isActive
-                      ? const Color(0xFFDCFCE7)
-                      : const Color(0xFFF3F4F6),
+                  color: project.status == 'en_attente'
+                      ? (isDark ? const Color(0xFF451A03) : const Color(0xFFFEF3C7))
+                      : isActive
+                          ? (isDark ? const Color(0xFF14532D) : const Color(0xFFDCFCE7))
+                          : AppColors.surfaceFill(context),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(
                   Icons.folder_outlined,
                   size: 22,
-                  color: isActive
-                      ? const Color(0xFF16A34A)
-                      : const Color(0xFF9CA3AF),
+                  color: statusColor,
                 ),
               ),
               const SizedBox(width: 14),
@@ -299,8 +306,8 @@ class _ProjectCard extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(
                       entry.clientName,
-                      style: const TextStyle(
-                          fontSize: 12, color: Color(0xFF6B7280)),
+                      style: TextStyle(
+                          fontSize: 12, color: AppColors.textSecondary(context)),
                     ),
                   ],
                 ),

@@ -1,9 +1,12 @@
+import 'dart:async' show Timer;
 import 'package:flutter/material.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/providers/projects_provider.dart';
+import '../../core/providers/session_bar_provider.dart';
 import '../../core/providers/sessions_provider.dart';
 import '../../core/theme/app_colors.dart';
 import 'timer_notifier.dart';
@@ -17,35 +20,73 @@ class TimerScreen extends ConsumerWidget {
     final entriesAsync = ref.watch(timerProjectsProvider);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('TimeToInvoice'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.person_outline),
-            tooltip: 'Mon profil',
-            onPressed: () => context.push('/profile'),
-          ),
-          IconButton(
-            icon: const Icon(Icons.logout),
-            tooltip: 'Se déconnecter',
-            onPressed: () async =>
-                Supabase.instance.client.auth.signOut(),
-          ),
-        ],
-      ),
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+          padding: const EdgeInsets.fromLTRB(24, 4, 24, 16),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ── Sélecteur de projet (BottomSheet) ───────────────────────
-              Text(
-                'Projet',
-                style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                      color: const Color(0xFF6B7280),
-                      fontWeight: FontWeight.w600,
+              // ── Top bar : paramètres ──────────────────────────────────
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  IconButton(
+                    icon: Icon(LucideIcons.settings,
+                        color: AppColors.textSecondary(context), size: 22),
+                    tooltip: 'Paramètres',
+                    onPressed: () => context.push('/settings'),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ],
+              ),
+
+              // ── Logo centré ───────────────────────────────────────────
+              Image.asset('assets/Chrono.png', height: 72),
+              const SizedBox(height: 8),
+              RichText(
+                text: TextSpan(
+                  children: [
+                    TextSpan(
+                      text: 'Chrono',
+                      style: GoogleFonts.montserrat(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w800,
+                        color: Theme.of(context).colorScheme.onSurface,
+                      ),
                     ),
+                    TextSpan(
+                      text: 'Facture',
+                      style: GoogleFonts.montserrat(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w500,
+                        color: Theme.of(context).colorScheme.onSurface,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'CHAQUE SECONDE COMPTE',
+                style: GoogleFonts.montserrat(
+                  fontSize: 9,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textTertiary(context),
+                  letterSpacing: 2,
+                ),
+              ),
+
+              const SizedBox(height: 20),
+
+              // ── Sélecteur de projet ────────────────────────────────────
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Projet',
+                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                        color: AppColors.textSecondary(context),
+                        fontWeight: FontWeight.w600,
+                      ),
+                ),
               ),
               const SizedBox(height: 8),
               entriesAsync.when(
@@ -57,39 +98,46 @@ class TimerScreen extends ConsumerWidget {
                   enabled: !timerState.isActive,
                 ),
               ),
-              const SizedBox(height: 40),
 
-              // ── Chrono — affiche le temps total travaillé ────────────────
-              Center(
-                  child: _ChronoDisplay(elapsed: timerState.totalWorked)),
+              const Spacer(flex: 2),
+
+              // ── Chrono ─────────────────────────────────────────────────
+              _ChronoDisplay(
+                elapsed: timerState.totalWorked,
+                isRunning: timerState.isRunning,
+              ),
               const SizedBox(height: 8),
               if (timerState.isPaused)
-                Center(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFEF3C7),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: const Text(
-                      '⏸ En pause',
-                      style: TextStyle(
-                          fontSize: 13,
-                          color: Color(0xFFD97706),
-                          fontWeight: FontWeight.w600),
-                    ),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? const Color(0xFF78350F)
+                        : const Color(0xFFFEF3C7),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    '⏸ En pause',
+                    style: TextStyle(
+                        fontSize: 13,
+                        color: Theme.of(context).brightness == Brightness.dark
+                            ? const Color(0xFFFBBF24)
+                            : const Color(0xFFD97706),
+                        fontWeight: FontWeight.w600),
                   ),
                 ),
-              const SizedBox(height: 32),
 
-              // ── Boutons timer ────────────────────────────────────────────
+              const SizedBox(height: 24),
+
+              // ── Boutons timer ──────────────────────────────────────────
               _TimerControls(
                 isRunning: timerState.isRunning,
                 isPaused: timerState.isPaused,
                 hasProject: timerState.selectedProjectId != null,
               ),
-              // BUG 3 : bouton "Créer une facture" supprimé de cet écran
+
+              const Spacer(flex: 3),
             ],
           ),
         ),
@@ -153,10 +201,12 @@ class _ProjectSelectorButton extends ConsumerWidget {
     final primary = Theme.of(context).colorScheme.primary;
     final hasSelection = selected != null;
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Material(
       color: hasSelection
           ? primary.withAlpha(18)
-          : Colors.white,
+          : isDark ? const Color(0xFF1E293B) : Colors.white,
       borderRadius: BorderRadius.circular(16),
       child: InkWell(
         onTap: enabled ? onTap : null,
@@ -168,7 +218,7 @@ class _ProjectSelectorButton extends ConsumerWidget {
             border: Border.all(
               color: hasSelection
                   ? primary.withAlpha(60)
-                  : const Color(0xFFE5E7EB),
+                  : AppColors.border(context),
               width: hasSelection ? 1.5 : 1,
             ),
           ),
@@ -181,12 +231,12 @@ class _ProjectSelectorButton extends ConsumerWidget {
                 decoration: BoxDecoration(
                   color: hasSelection
                       ? primary.withAlpha(30)
-                      : const Color(0xFFF3F4F6),
+                      : AppColors.surfaceFill(context),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Icon(
                   Icons.folder_outlined,
-                  color: hasSelection ? primary : const Color(0xFF9CA3AF),
+                  color: hasSelection ? primary : AppColors.textTertiary(context),
                   size: 20,
                 ),
               ),
@@ -215,9 +265,9 @@ class _ProjectSelectorButton extends ConsumerWidget {
                             const SizedBox(height: 2),
                             Text(
                               selected.clientName,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 13,
-                                color: Color(0xFF6B7280),
+                                color: AppColors.textSecondary(context),
                               ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -225,7 +275,7 @@ class _ProjectSelectorButton extends ConsumerWidget {
                           ],
                         )
                       : Text(
-                          'Choisir un chantier',
+                          'Choisir un projet',
                           key: const ValueKey('no-project'),
                           style: TextStyle(
                               color: primary.withAlpha(120),
@@ -262,10 +312,57 @@ class _ProjectSelectorButton extends ConsumerWidget {
 
 // ─── Chrono display ───────────────────────────────────────────────────────────
 
-class _ChronoDisplay extends StatelessWidget {
+class _ChronoDisplay extends StatefulWidget {
   final Duration elapsed;
+  final bool isRunning;
 
-  const _ChronoDisplay({required this.elapsed});
+  const _ChronoDisplay({required this.elapsed, required this.isRunning});
+
+  @override
+  State<_ChronoDisplay> createState() => _ChronoDisplayState();
+}
+
+class _ChronoDisplayState extends State<_ChronoDisplay> {
+  Timer? _ticker;
+  int _centiseconds = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.isRunning) _startTicker();
+  }
+
+  @override
+  void didUpdateWidget(_ChronoDisplay old) {
+    super.didUpdateWidget(old);
+    if (widget.isRunning && !old.isRunning) {
+      _centiseconds = 0;
+      _startTicker();
+    } else if (!widget.isRunning && old.isRunning) {
+      _stopTicker();
+    }
+  }
+
+  void _startTicker() {
+    _stopTicker();
+    _centiseconds = 0;
+    _ticker = Timer.periodic(const Duration(milliseconds: 50), (_) {
+      setState(() {
+        _centiseconds = (_centiseconds + 5) % 100;
+      });
+    });
+  }
+
+  void _stopTicker() {
+    _ticker?.cancel();
+    _ticker = null;
+  }
+
+  @override
+  void dispose() {
+    _stopTicker();
+    super.dispose();
+  }
 
   String _format(Duration d) {
     final h = d.inHours.toString().padLeft(2, '0');
@@ -276,22 +373,43 @@ class _ChronoDisplay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final base = _format(widget.elapsed);
+    final cs = _centiseconds.toString().padLeft(2, '0');
+
     return Column(
       children: [
-        Text(
-          _format(elapsed),
+        Text.rich(
+          TextSpan(
+            text: base,
+            children: widget.isRunning
+                ? [
+                    TextSpan(
+                      text: '.$cs',
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w600,
+                        color: Theme.of(context)
+                            .textTheme
+                            .displayLarge
+                            ?.color
+                            ?.withAlpha(150),
+                      ),
+                    ),
+                  ]
+                : null,
+          ),
           style: Theme.of(context).textTheme.displayLarge?.copyWith(
                 fontWeight: FontWeight.w800,
-                fontSize: 64,
-                letterSpacing: -2,
+                fontSize: 44,
+                letterSpacing: -1.5,
                 fontFeatures: const [FontFeature.tabularFigures()],
               ),
         ),
         const SizedBox(height: 4),
         Text(
-          'hh : mm : ss',
+          widget.isRunning ? 'hh : mm : ss . cc' : 'hh : mm : ss',
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: const Color(0xFF9CA3AF),
+                color: AppColors.textTertiary(context),
                 letterSpacing: 2,
               ),
         ),
@@ -321,7 +439,7 @@ class _TimerControlsState extends ConsumerState<_TimerControls> {
   bool _loading = false;
 
   Future<void> _start() async {
-    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ref.read(sessionBarProvider.notifier).state = null;
     setState(() => _loading = true);
     try {
       await ref.read(timerProvider.notifier).start();
@@ -334,9 +452,6 @@ class _TimerControlsState extends ConsumerState<_TimerControls> {
   void _resume() => ref.read(timerProvider.notifier).resume();
 
   void _stop(BuildContext context) {
-    // Capture les refs synchrones avant le stop
-    final messenger = ScaffoldMessenger.of(context);
-    final router = GoRouter.of(context);
     final projectId = ref.read(timerProvider).selectedProjectId;
 
     // Stop synchrone — état local réinitialisé immédiatement
@@ -361,170 +476,41 @@ class _TimerControlsState extends ConsumerState<_TimerControls> {
     final s = (secs % 60).toString().padLeft(2, '0');
     final durationStr = '$h:$m:$s';
 
-    // Ligne 1 — "Ven. 11 avr. · 18:17 → 18:17"
+    // Date + heures pour la barre session
     final startStr =
         DateFormat('HH:mm').format(result.startedAt.toLocal());
     final endStr =
         DateFormat('HH:mm').format(result.endedAt.toLocal());
-    final dateStr =
-        DateFormat('d MMM', 'fr_FR').format(result.startedAt.toLocal());
     final dayRaw =
-        DateFormat('EEE', 'fr_FR').format(result.startedAt.toLocal());
-    // "ven." → "Ven" — capitalize + retire le point final
-    final dayTrimmed = dayRaw.endsWith('.') ? dayRaw.substring(0, dayRaw.length - 1) : dayRaw;
-    final dayStr = dayTrimmed.isNotEmpty
-        ? '${dayTrimmed[0].toUpperCase()}${dayTrimmed.substring(1)}'
-        : dayTrimmed;
-    final line1 = '$dayStr $dateStr · $startStr → $endStr';
+        DateFormat('EEEE d MMMM', 'fr_FR').format(result.startedAt.toLocal());
+    final dayStr = dayRaw.isNotEmpty
+        ? '${dayRaw[0].toUpperCase()}${dayRaw.substring(1)}'
+        : dayRaw;
+    final timeRangeStr = 'de $startStr à $endStr';
 
     // Montant
     final amount = (secs / 3600.0) * (project?.hourlyRate ?? 0);
     final currency = project?.currency ?? 'EUR';
     final symbol = const {
-      'EUR': '€',
-      'USD': '\$',
-      'GBP': '£',
-      'CHF': 'CHF',
-    }[currency] ??
+          'EUR': '€',
+          'USD': '\$',
+          'GBP': '£',
+          'CHF': 'CHF',
+        }[currency] ??
         currency;
-    final amountStr = amount.toStringAsFixed(2).replaceAll('.', ',');
+    final amountStr =
+        '${amount.toStringAsFixed(2).replaceAll('.', ',')} $symbol';
 
-    final sessionId = result.sessionId;
-
-    messenger.clearSnackBars();
-    final controller = messenger.showSnackBar(
-        SnackBar(
-          duration: const Duration(days: 365),
-          dismissDirection: DismissDirection.horizontal,
-          behavior: SnackBarBehavior.floating,
-          backgroundColor: AppColors.primary,
-          padding: EdgeInsets.zero,
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12)),
-          content: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () {
-              messenger.hideCurrentSnackBar();
-              if (clientId != null && projectId != null) {
-                router.push(
-                  '/clients/$clientId/projects/$projectId/sessions',
-                  extra: sessionId,
-                );
-              }
-            },
-            child: IntrinsicHeight(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 12),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Ligne 1 — "Ven. 11 avr. · 18:17 → 18:17"
-                          Text(
-                            line1,
-                            style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700,
-                              color: Colors.white,
-                              height: 1.3,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: 4),
-                          // Ligne 2 — "00:00:16  ·  0,14 €"
-                          Row(
-                            children: [
-                              Text(
-                                durationStr,
-                                style: const TextStyle(
-                                  fontSize: 13,
-                                  color: Colors.white,
-                                  height: 1.3,
-                                ),
-                              ),
-                              const Spacer(),
-                              Text(
-                                '$amountStr $symbol',
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  color: Colors.white.withAlpha(200),
-                                  height: 1.3,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  // Chevron — zone avec fond semi-opaque, coins droits arrondis
-                  if (clientId != null)
-                    Container(
-                      width: 40,
-                      decoration: const BoxDecoration(
-                        color: Color(0x26FFFFFF), // blanc 15 %
-                        borderRadius: BorderRadius.only(
-                          topRight: Radius.circular(12),
-                          bottomRight: Radius.circular(12),
-                        ),
-                      ),
-                      child: const Icon(
-                        Icons.chevron_right,
-                        color: Colors.white,
-                        size: 22,
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      );
-    // Après dismiss (swipe ou tap chevron), confirmer l'ajout
-    controller.closed.then((reason) {
-      if (reason == SnackBarClosedReason.swipe ||
-          reason == SnackBarClosedReason.dismiss) {
-        messenger.showSnackBar(
-          SnackBar(
-            content: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () {
-                messenger.hideCurrentSnackBar();
-                if (clientId != null && projectId != null) {
-                  router.push(
-                    '/clients/$clientId/projects/$projectId/sessions',
-                  );
-                }
-              },
-              child: const Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.arrow_forward,
-                      size: 14, color: Colors.white),
-                  SizedBox(width: 6),
-                  Text(
-                    'Session ajoutée au projet ✓',
-                    style: TextStyle(
-                      color: Colors.white,
-                      decoration: TextDecoration.underline,
-                      decorationColor: Colors.white,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            behavior: SnackBarBehavior.floating,
-            duration: const Duration(seconds: 2),
-          ),
-        );
-      }
-    });
+    // Afficher la barre persistante dans AppShell
+    ref.read(sessionBarProvider.notifier).state = SessionBarData(
+      dayStr: dayStr,
+      timeRangeStr: timeRangeStr,
+      durationStr: durationStr,
+      amountStr: amountStr,
+      clientId: clientId,
+      projectId: projectId,
+      sessionId: result.sessionId,
+    );
   }
 
   @override
