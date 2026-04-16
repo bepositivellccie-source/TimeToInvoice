@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -101,12 +102,23 @@ class _ClientsScreenState extends ConsumerState<ClientsScreen> {
             return _EmptyState(onAdd: () => _openForm(context, null));
           }
 
-          // ── Tri alphabétique par labelWith(mode) ─────────────────────
+          // ── Tri : billing_status (overdue > pending > clear > new), puis label ─
+          int billingPriority(String s) => switch (s) {
+                'overdue' => 0,
+                'pending' => 1,
+                'clear' => 2,
+                _ => 3,
+              };
           final sorted = [...clients]
-            ..sort((a, b) => a
-                .labelWith(mode)
-                .toLowerCase()
-                .compareTo(b.labelWith(mode).toLowerCase()));
+            ..sort((a, b) {
+              final pa = billingPriority(a.billingStatus);
+              final pb = billingPriority(b.billingStatus);
+              if (pa != pb) return pa.compareTo(pb);
+              return a
+                  .labelWith(mode)
+                  .toLowerCase()
+                  .compareTo(b.labelWith(mode).toLowerCase());
+            });
 
           // ── Premier index par lettre + lettres actives (A-Z seulement)
           final activeLetters = <String>{};
@@ -447,13 +459,19 @@ class _ClientTileState extends ConsumerState<_ClientTile>
                                 child: Center(
                                   child: AnimatedSwitcher(
                                     duration: const Duration(milliseconds: 200),
-                                    child: Icon(
-                                      LucideIcons.userCircle2,
+                                    child: SvgPicture.asset(
+                                      isCompanyMode
+                                          ? 'assets/icons/Entreprise.svg'
+                                          : 'assets/icons/profil-actif.svg',
                                       key: ValueKey(isCompanyMode),
-                                      size: 22,
-                                      color: isCompanyMode
-                                          ? Theme.of(context).colorScheme.primary
-                                          : AppColors.textSecondary(context),
+                                      width: 20,
+                                      height: 20,
+                                      colorFilter: ColorFilter.mode(
+                                        isCompanyMode
+                                            ? const Color(0xFF4B5563)
+                                            : const Color(0xFF305DA8),
+                                        BlendMode.srcIn,
+                                      ),
                                     ),
                                   ),
                                 ),
@@ -490,7 +508,6 @@ class _ClientTileState extends ConsumerState<_ClientTile>
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Row(
-                                mainAxisSize: MainAxisSize.min,
                                 children: [
                                   Flexible(
                                     child: AnimatedSwitcher(
@@ -520,6 +537,7 @@ class _ClientTileState extends ConsumerState<_ClientTile>
                                       ),
                                     ),
                                   ),
+                                  _BillingBadge(status: widget.client.billingStatus),
                                 ],
                               ),
                               if (subtitle.isNotEmpty) ...[
@@ -542,6 +560,43 @@ class _ClientTileState extends ConsumerState<_ClientTile>
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ─── Badge statut facturation ────────────────────────────────────────────────
+
+class _BillingBadge extends StatelessWidget {
+  final String status;
+
+  const _BillingBadge({required this.status});
+
+  @override
+  Widget build(BuildContext context) {
+    final config = switch (status) {
+      'overdue' => (label: 'Impayé', color: const Color(0xFFEF4444)),
+      'pending' => (label: 'En attente', color: const Color(0xFFF97316)),
+      _ => null,
+    };
+    if (config == null) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(left: 8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+        decoration: BoxDecoration(
+          color: config.color.withAlpha(31),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text(
+          config.label,
+          style: TextStyle(
+            fontSize: 11,
+            color: config.color,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
       ),
     );
   }
@@ -636,9 +691,8 @@ class _ClientFormSheetState extends ConsumerState<ClientFormSheet> {
     _optionalExpanded = _isEdit &&
         (c!.siret?.isNotEmpty == true ||
             c.street?.isNotEmpty == true ||
-            c.phone?.isNotEmpty == true ||
-            c.whatsapp?.isNotEmpty == true ||
-            c.email?.isNotEmpty == true);
+            c.zipCode?.isNotEmpty == true ||
+            c.city?.isNotEmpty == true);
   }
 
   @override
@@ -758,21 +812,32 @@ class _ClientFormSheetState extends ConsumerState<ClientFormSheet> {
               ),
             ),
           ),
-          // ── En-tête : titre + bouton d'action ───────────────────────────
+          // ── En-tête : Annuler / titre centré / Créer ou Enregistrer ──
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 6, 8, 8),
+            padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
             child: Row(
               children: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  style: TextButton.styleFrom(
+                    foregroundColor: const Color(0xFF6B7280),
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                  ),
+                  child: const Text(
+                    'Annuler',
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
+                  ),
+                ),
                 Expanded(
                   child: Text(
                     sheetTitle,
+                    textAlign: TextAlign.center,
                     style: const TextStyle(
-                        fontSize: 18, fontWeight: FontWeight.w700),
+                        fontSize: 17, fontWeight: FontWeight.w700),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                // Bouton droit : crayon (vue) ↔ Enregistrer/Créer (édition)
                 if (_editMode)
                   _saving
                       ? const Padding(
@@ -786,10 +851,15 @@ class _ClientFormSheetState extends ConsumerState<ClientFormSheet> {
                         )
                       : TextButton(
                           onPressed: _save,
+                          style: TextButton.styleFrom(
+                            foregroundColor: const Color(0xFF305DA8),
+                            padding:
+                                const EdgeInsets.symmetric(horizontal: 12),
+                          ),
                           child: Text(
                             _isEdit ? 'Enregistrer' : 'Créer',
                             style: const TextStyle(
-                                fontWeight: FontWeight.w600, fontSize: 15),
+                                fontWeight: FontWeight.w700, fontSize: 15),
                           ),
                         )
                 else
@@ -889,49 +959,27 @@ class _ClientFormSheetState extends ConsumerState<ClientFormSheet> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ── Entreprise ────────────────────────────────────────────────
-          TextFormField(
-            controller: _company,
-            autofocus: !_isEdit,
-            decoration: const InputDecoration(
-              labelText: 'Entreprise',
-              hintText: 'ex : Cabinet Dupont SARL',
-              prefixIcon: Icon(Icons.business_outlined),
-            ),
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: _company.text.isNotEmpty
-                  ? FontWeight.w600
-                  : FontWeight.w400,
-            ),
-            textCapitalization: TextCapitalization.words,
-            textInputAction: TextInputAction.next,
-            onChanged: (_) => setState(() {}),
-          ),
-          const SizedBox(height: 12),
-          // ── Prénom + Nom ───────────────────────────────────────────────
+          // ── IDENTITÉ ──────────────────────────────────────────────
+          const _MD3SectionHeader(title: 'IDENTITÉ'),
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
-                child: TextFormField(
+                child: _MD3Field(
+                  label: 'Prénom',
+                  hint: 'Marie',
                   controller: _firstName,
-                  decoration: const InputDecoration(
-                    labelText: 'Prénom',
-                    hintText: 'Marie',
-                  ),
+                  autofocus: !_isEdit,
                   textCapitalization: TextCapitalization.words,
                   textInputAction: TextInputAction.next,
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 16),
               Expanded(
-                child: TextFormField(
+                child: _MD3Field(
+                  label: 'Nom *',
+                  hint: 'Dupont',
                   controller: _name,
-                  decoration: const InputDecoration(
-                    labelText: 'Nom *',
-                    hintText: 'Dupont',
-                  ),
                   validator: (v) =>
                       (v == null || v.trim().isEmpty) ? 'Requis' : null,
                   textCapitalization: TextCapitalization.words,
@@ -940,79 +988,114 @@ class _ClientFormSheetState extends ConsumerState<ClientFormSheet> {
               ),
             ],
           ),
-          const SizedBox(height: 16),
-          // ── Section optionnelle dépliable ──────────────────────────────
-          GestureDetector(
+          _MD3Field(
+            label: 'Entreprise / raison sociale',
+            hint: 'ex : Cabinet Dupont SARL',
+            controller: _company,
+            textCapitalization: TextCapitalization.words,
+            textInputAction: TextInputAction.next,
+          ),
+
+          // ── CONTACT ───────────────────────────────────────────────
+          const _MD3SectionHeader(title: 'CONTACT'),
+          _MD3Field(
+            label: 'Email',
+            hint: 'ex : marie.dupont@gmail.com',
+            controller: _email,
+            keyboardType: TextInputType.emailAddress,
+            textInputAction: TextInputAction.next,
+          ),
+          _MD3Field(
+            label: 'Téléphone',
+            hint: '+33 6 12 34 56 78',
+            controller: _phone,
+            keyboardType: TextInputType.phone,
+            textInputAction: TextInputAction.next,
+          ),
+          _MD3Field(
+            label: 'WhatsApp',
+            hint: '+33 6 12 34 56 78',
+            controller: _whatsapp,
+            keyboardType: TextInputType.phone,
+            textInputAction: TextInputAction.next,
+            prefix: const _WhatsAppIcon(),
+            suffix: _whatsapp.text.isNotEmpty
+                ? IconButton(
+                    icon: const Icon(Icons.open_in_new, size: 18),
+                    tooltip: 'Ouvrir WhatsApp',
+                    onPressed: () => _openWhatsApp(_whatsapp.text),
+                  )
+                : null,
+            onChanged: () => setState(() {}),
+          ),
+
+          // ── ADRESSE (collapsible) ─────────────────────────────────
+          const SizedBox(height: 14),
+          InkWell(
             onTap: () =>
                 setState(() => _optionalExpanded = !_optionalExpanded),
-            child: Row(
-              children: [
-                Icon(
-                  _optionalExpanded ? Icons.expand_less : Icons.expand_more,
-                  size: 18,
-                  color: const Color(0xFF6B7280),
-                ),
-                const SizedBox(width: 6),
-                const Text(
-                  'Informations complémentaires (optionnel)',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Color(0xFF6B7280),
-                    fontWeight: FontWeight.w500,
+            borderRadius: BorderRadius.circular(6),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Row(
+                children: [
+                  const Text(
+                    'ADRESSE',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF6B7280),
+                      letterSpacing: 0.8,
+                    ),
                   ),
-                ),
-              ],
+                  const SizedBox(width: 6),
+                  Icon(
+                    _optionalExpanded ? Icons.expand_less : Icons.expand_more,
+                    size: 18,
+                    color: const Color(0xFF6B7280),
+                  ),
+                ],
+              ),
             ),
           ),
           if (_optionalExpanded) ...[
-            const SizedBox(height: 14),
-            TextFormField(
+            _MD3Field(
+              label: 'Rue',
+              hint: 'ex : 12 rue de la Paix',
               controller: _street,
-              decoration: const InputDecoration(
-                labelText: 'Rue',
-                hintText: 'ex : 12 rue de la Paix',
-                prefixIcon: Icon(Icons.location_on_outlined),
-              ),
               textInputAction: TextInputAction.next,
             ),
-            const SizedBox(height: 12),
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                SizedBox(
-                  width: 110,
-                  child: TextFormField(
+                Expanded(
+                  flex: 1,
+                  child: _MD3Field(
+                    label: 'Code postal',
+                    hint: '75001',
                     controller: _zipCode,
-                    decoration: const InputDecoration(
-                      labelText: 'Code postal',
-                      hintText: '75001',
-                    ),
                     keyboardType: TextInputType.number,
                     maxLength: 5,
                     textInputAction: TextInputAction.next,
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 16),
                 Expanded(
-                  child: TextFormField(
+                  flex: 2,
+                  child: _MD3Field(
+                    label: 'Ville',
+                    hint: 'Paris',
                     controller: _city,
-                    decoration: const InputDecoration(
-                      labelText: 'Ville',
-                      hintText: 'Paris',
-                    ),
                     textCapitalization: TextCapitalization.words,
                     textInputAction: TextInputAction.next,
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 12),
-            TextFormField(
+            _MD3Field(
+              label: 'SIRET (14 chiffres)',
+              hint: 'ex : 12345678901234',
               controller: _siret,
-              decoration: const InputDecoration(
-                labelText: 'SIRET (14 chiffres)',
-                hintText: 'ex : 12345678901234',
-                prefixIcon: Icon(Icons.tag_outlined),
-              ),
               keyboardType: TextInputType.number,
               maxLength: 14,
               validator: (v) {
@@ -1022,48 +1105,6 @@ class _ClientFormSheetState extends ConsumerState<ClientFormSheet> {
                 }
                 return null;
               },
-              textInputAction: TextInputAction.next,
-            ),
-            const SizedBox(height: 4),
-            TextFormField(
-              controller: _phone,
-              decoration: const InputDecoration(
-                labelText: 'Téléphone',
-                hintText: 'ex : +33 6 12 34 56 78',
-                prefixIcon: Icon(Icons.phone_outlined),
-              ),
-              keyboardType: TextInputType.phone,
-              textInputAction: TextInputAction.next,
-            ),
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: _whatsapp,
-              decoration: InputDecoration(
-                labelText: 'WhatsApp',
-                hintText: 'ex : +33 6 12 34 56 78',
-                prefixIcon: const _WhatsAppIcon(),
-                suffixIcon: _whatsapp.text.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.open_in_new, size: 18),
-                        tooltip: 'Ouvrir WhatsApp',
-                        onPressed: () => _openWhatsApp(_whatsapp.text),
-                      )
-                    : null,
-                helperText: 'Numéro international (+33…)',
-              ),
-              keyboardType: TextInputType.phone,
-              textInputAction: TextInputAction.next,
-              onChanged: (_) => setState(() {}),
-            ),
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: _email,
-              decoration: const InputDecoration(
-                labelText: 'Email',
-                hintText: 'ex : marie.dupont@gmail.com',
-                prefixIcon: Icon(Icons.email_outlined),
-              ),
-              keyboardType: TextInputType.emailAddress,
               textInputAction: TextInputAction.done,
               onFieldSubmitted: (_) => _save(),
             ),
@@ -1104,7 +1145,7 @@ class _ViewRow extends StatelessWidget {
               icon,
               size: 18,
               color: iconColor ??
-                  (bold ? const Color(0xFF2563EB) : const Color(0xFF6B7280)),
+                  (bold ? const Color(0xFF305DA8) : const Color(0xFF6B7280)),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -1157,6 +1198,123 @@ class _WhatsAppIcon extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+// ─── MD3 helpers : section header + field ────────────────────────────────────
+
+class _MD3SectionHeader extends StatelessWidget {
+  final String title;
+  const _MD3SectionHeader({required this.title});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 18, bottom: 2),
+      child: Text(
+        title,
+        style: const TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+          color: Color(0xFF6B7280),
+          letterSpacing: 0.8,
+        ),
+      ),
+    );
+  }
+}
+
+class _MD3Field extends StatelessWidget {
+  final String label;
+  final String? hint;
+  final TextEditingController controller;
+  final TextInputType? keyboardType;
+  final TextInputAction? textInputAction;
+  final TextCapitalization textCapitalization;
+  final String? Function(String?)? validator;
+  final int? maxLength;
+  final Widget? prefix;
+  final Widget? suffix;
+  final bool autofocus;
+  final VoidCallback? onChanged;
+  final ValueChanged<String>? onFieldSubmitted;
+
+  const _MD3Field({
+    required this.label,
+    this.hint,
+    required this.controller,
+    this.keyboardType,
+    this.textInputAction,
+    this.textCapitalization = TextCapitalization.none,
+    this.validator,
+    this.maxLength,
+    this.prefix,
+    this.suffix,
+    this.autofocus = false,
+    this.onChanged,
+    this.onFieldSubmitted,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 10, bottom: 2),
+          child: Text(
+            label,
+            style: const TextStyle(
+              fontSize: 11,
+              color: Color(0xFF6B7280),
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.4,
+            ),
+          ),
+        ),
+        TextFormField(
+          controller: controller,
+          autofocus: autofocus,
+          keyboardType: keyboardType,
+          textInputAction: textInputAction,
+          textCapitalization: textCapitalization,
+          validator: validator,
+          maxLength: maxLength,
+          onChanged: onChanged != null ? (_) => onChanged!() : null,
+          onFieldSubmitted: onFieldSubmitted,
+          style: const TextStyle(fontSize: 15),
+          decoration: InputDecoration(
+            hintText: hint,
+            hintStyle: const TextStyle(
+              color: Color(0xFFBDBDBD),
+              fontSize: 15,
+            ),
+            prefixIcon: prefix,
+            suffixIcon: suffix,
+            filled: true,
+            fillColor: Colors.transparent,
+            isDense: true,
+            contentPadding: const EdgeInsets.symmetric(vertical: 10),
+            border: const UnderlineInputBorder(
+              borderSide: BorderSide(color: Color(0xFFE5E7EB), width: 0.5),
+            ),
+            enabledBorder: const UnderlineInputBorder(
+              borderSide: BorderSide(color: Color(0xFFE5E7EB), width: 0.5),
+            ),
+            focusedBorder: const UnderlineInputBorder(
+              borderSide: BorderSide(color: Color(0xFF305DA8), width: 1.5),
+            ),
+            errorBorder: const UnderlineInputBorder(
+              borderSide: BorderSide(color: Color(0xFFEF4444), width: 0.5),
+            ),
+            focusedErrorBorder: const UnderlineInputBorder(
+              borderSide: BorderSide(color: Color(0xFFEF4444), width: 1.5),
+            ),
+            counterText: '',
+          ),
+        ),
+      ],
     );
   }
 }

@@ -12,6 +12,7 @@ class Client {
   final String? whatsapp;
   final String? email;
   final DateTime createdAt;
+  final String billingStatus; // 'overdue' | 'pending' | 'clear' | 'new'
 
   const Client({
     required this.id,
@@ -27,6 +28,7 @@ class Client {
     this.whatsapp,
     this.email,
     required this.createdAt,
+    this.billingStatus = 'new',
   });
 
   /// Label court selon le mode d'affichage utilisateur.
@@ -97,6 +99,7 @@ class Client {
         whatsapp: json['whatsapp'] as String?,
         email: json['email'] as String?,
         createdAt: DateTime.parse(json['created_at'] as String),
+        billingStatus: (json['billing_status'] as String?) ?? 'new',
       );
 
   Map<String, dynamic> toJson() => {

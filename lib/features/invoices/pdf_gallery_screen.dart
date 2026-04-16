@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:intl/intl.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:path_provider/path_provider.dart';
@@ -22,6 +23,8 @@ class _PdfGalleryScreenState extends ConsumerState<PdfGalleryScreen> {
   int _columns = 1;
   String _searchQuery = '';
   bool _loadingPdf = false;
+  int? _selectedYear;
+  int? _selectedMonth;
   final _searchCtrl = TextEditingController();
 
   @override
@@ -31,14 +34,65 @@ class _PdfGalleryScreenState extends ConsumerState<PdfGalleryScreen> {
   }
 
   List<Invoice> _filterInvoices(List<Invoice> all) {
-    final withPdf = all.where((i) => i.pdfPath != null).toList();
-    if (_searchQuery.isEmpty) return withPdf;
-    final q = _searchQuery.toLowerCase();
-    return withPdf.where((i) {
-      final name = (i.clientName ?? '').toLowerCase();
-      final num = i.invoiceNumber.toLowerCase();
-      return name.contains(q) || num.contains(q);
-    }).toList();
+    var result = all.where((i) => i.pdfPath != null).toList();
+
+    if (_selectedYear != null) {
+      result =
+          result.where((i) => i.createdAt.year == _selectedYear).toList();
+    }
+    if (_selectedMonth != null) {
+      result =
+          result.where((i) => i.createdAt.month == _selectedMonth).toList();
+    }
+
+    if (_searchQuery.isNotEmpty) {
+      final q = _searchQuery.toLowerCase();
+      result = result.where((i) {
+        final name = (i.clientName ?? '').toLowerCase();
+        final num = i.invoiceNumber.toLowerCase();
+        return name.contains(q) || num.contains(q);
+      }).toList();
+    }
+
+    return result;
+  }
+
+  List<int> _extractYears(List<Invoice> invoices) {
+    final years = invoices
+        .where((i) => i.pdfPath != null)
+        .map((i) => i.createdAt.year)
+        .toSet()
+        .toList()
+      ..sort((a, b) => b.compareTo(a));
+    return years;
+  }
+
+  List<int> _monthsForYear(List<Invoice> invoices, int year) {
+    final months = invoices
+        .where((i) => i.pdfPath != null && i.createdAt.year == year)
+        .map((i) => i.createdAt.month)
+        .toSet()
+        .toList()
+      ..sort();
+    return months;
+  }
+
+  String _monthName(int m) {
+    const names = [
+      'Jan',
+      'Fév',
+      'Mar',
+      'Avr',
+      'Mai',
+      'Juin',
+      'Juil',
+      'Août',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Déc'
+    ];
+    return names[m - 1];
   }
 
   Future<void> _openPdf(Invoice inv) async {
@@ -90,10 +144,16 @@ class _PdfGalleryScreenState extends ConsumerState<PdfGalleryScreen> {
         actions: [
           IconButton(
             onPressed: () => setState(() => _columns = 1),
-            icon: Icon(
-              LucideIcons.layoutList,
-              color: _columns == 1 ? primary : const Color(0xFF9CA3AF),
-              size: 20,
+            icon: SvgPicture.asset(
+              'assets/icons/pdf.actif.svg',
+              width: 22,
+              height: 22,
+              colorFilter: ColorFilter.mode(
+                _columns == 1
+                    ? const Color(0xFF305DA8)
+                    : const Color(0xFF9CA3AF),
+                BlendMode.srcIn,
+              ),
             ),
             tooltip: '1 colonne',
           ),
@@ -121,59 +181,115 @@ class _PdfGalleryScreenState extends ConsumerState<PdfGalleryScreen> {
         children: [
           Column(
             children: [
-          // ── Barre de recherche ──────────────────────────────────
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-            child: TextField(
-              controller: _searchCtrl,
-              onChanged: (v) => setState(() => _searchQuery = v.trim()),
-              decoration: InputDecoration(
-                hintText: 'Rechercher un client...',
-                hintStyle: const TextStyle(
-                    fontSize: 14, color: Color(0xFF9CA3AF)),
-                prefixIcon: const Icon(LucideIcons.search, size: 18),
-                suffixIcon: _searchQuery.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(LucideIcons.x, size: 16),
-                        onPressed: () {
-                          _searchCtrl.clear();
-                          setState(() => _searchQuery = '');
-                        },
-                      )
-                    : null,
-                filled: true,
-                fillColor: Theme.of(context).brightness == Brightness.dark
-                    ? Colors.white.withAlpha(10)
-                    : const Color(0xFFF3F4F6),
-                contentPadding: const EdgeInsets.symmetric(vertical: 12),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
+              // ── Barre de recherche ──────────────────────────────────
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                child: TextField(
+                  controller: _searchCtrl,
+                  onChanged: (v) => setState(() => _searchQuery = v.trim()),
+                  decoration: InputDecoration(
+                    hintText: 'Rechercher un client...',
+                    hintStyle: const TextStyle(
+                        fontSize: 14, color: Color(0xFF9CA3AF)),
+                    prefixIcon: const Icon(LucideIcons.search, size: 18),
+                    suffixIcon: _searchQuery.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(LucideIcons.x, size: 16),
+                            onPressed: () {
+                              _searchCtrl.clear();
+                              setState(() => _searchQuery = '');
+                            },
+                          )
+                        : null,
+                    filled: true,
+                    fillColor:
+                        Theme.of(context).brightness == Brightness.dark
+                            ? Colors.white.withAlpha(10)
+                            : const Color(0xFFF3F4F6),
+                    contentPadding:
+                        const EdgeInsets.symmetric(vertical: 12),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
                 ),
               ),
-            ),
-          ),
 
-          // ── Contenu ────────────────────────────────────────────
-          Expanded(
-            child: invoicesAsync.when(
-              loading: () =>
-                  const Center(child: CircularProgressIndicator()),
-              error: (e, _) => Center(
-                child: Text('Erreur : $e',
-                    style: const TextStyle(color: Color(0xFFDC2626))),
+              // ── Contenu ────────────────────────────────────────────
+              Expanded(
+                child: invoicesAsync.when(
+                  loading: () =>
+                      const Center(child: CircularProgressIndicator()),
+                  error: (e, _) => Center(
+                    child: Text('Erreur : $e',
+                        style: const TextStyle(color: Color(0xFFDC2626))),
+                  ),
+                  data: (all) {
+                    final years = _extractYears(all);
+                    final months = _selectedYear != null
+                        ? _monthsForYear(all, _selectedYear!)
+                        : const <int>[];
+                    final invoices = _filterInvoices(all);
+
+                    return Column(
+                      children: [
+                        if (years.length > 1)
+                          _FilterRow(
+                            children: [
+                              _YearChip(
+                                label: 'Tout',
+                                selected: _selectedYear == null,
+                                onTap: () => setState(() {
+                                  _selectedYear = null;
+                                  _selectedMonth = null;
+                                }),
+                              ),
+                              for (final y in years)
+                                _YearChip(
+                                  label: '$y',
+                                  selected: _selectedYear == y,
+                                  onTap: () => setState(() {
+                                    _selectedYear = y;
+                                    _selectedMonth = null;
+                                  }),
+                                ),
+                            ],
+                          ),
+                        if (_selectedYear != null && months.isNotEmpty)
+                          _FilterRow(
+                            children: [
+                              _MonthChip(
+                                label: 'Tout',
+                                selected: _selectedMonth == null,
+                                onTap: () => setState(
+                                    () => _selectedMonth = null),
+                              ),
+                              for (final m in months)
+                                _MonthChip(
+                                  label: _monthName(m),
+                                  selected: _selectedMonth == m,
+                                  onTap: () => setState(
+                                      () => _selectedMonth = m),
+                                ),
+                            ],
+                          ),
+                        Expanded(
+                          child: invoices.isEmpty
+                              ? _EmptyState(
+                                  hasSearch: _searchQuery.isNotEmpty ||
+                                      _selectedYear != null ||
+                                      _selectedMonth != null,
+                                )
+                              : _columns == 1
+                                  ? _buildList(invoices)
+                                  : _buildGrid(invoices),
+                        ),
+                      ],
+                    );
+                  },
+                ),
               ),
-              data: (all) {
-                final invoices = _filterInvoices(all);
-                if (invoices.isEmpty) {
-                  return _EmptyState(hasSearch: _searchQuery.isNotEmpty);
-                }
-                return _columns == 1
-                    ? _buildList(invoices)
-                    : _buildGrid(invoices);
-              },
-            ),
-          ),
             ],
           ),
           if (_loadingPdf)
@@ -218,6 +334,178 @@ class _PdfGalleryScreenState extends ConsumerState<PdfGalleryScreen> {
   }
 }
 
+// ─── Filter row (scroll horizontal) ────────────────────────────────────────
+
+class _FilterRow extends StatelessWidget {
+  final List<Widget> children;
+  const _FilterRow({required this.children});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            for (int i = 0; i < children.length; i++) ...[
+              if (i > 0) const SizedBox(width: 6),
+              children[i],
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Year chip ─────────────────────────────────────────────────────────────
+
+class _YearChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _YearChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: selected
+              ? const Color(0xFF305DA8)
+              : const Color(0xFFF3F4F6),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: selected ? Colors.white : const Color(0xFF6B7280),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Month chip ────────────────────────────────────────────────────────────
+
+class _MonthChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _MonthChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: selected
+              ? const Color(0xFF305DA8)
+              : const Color(0xFFF3F4F6),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: selected ? Colors.white : const Color(0xFF6B7280),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Status badge ──────────────────────────────────────────────────────────
+
+class _StatusBadge extends StatelessWidget {
+  final String status;
+  const _StatusBadge({required this.status});
+
+  @override
+  Widget build(BuildContext context) {
+    final config = switch (status) {
+      'paid' => (label: 'Payée', color: const Color(0xFF22C55E)),
+      'sent' => (label: 'Envoyée', color: const Color(0xFF305DA8)),
+      'draft' => (label: 'Brouillon', color: const Color(0xFF9CA3AF)),
+      _ => null,
+    };
+    if (config == null) return const SizedBox.shrink();
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: config.color.withAlpha(31),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        config.label,
+        style: TextStyle(
+          fontSize: 11,
+          color: config.color,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Helper : détection facture en retard (via due_at, pas via status) ────
+
+bool _isOverdue(Invoice invoice) {
+  return invoice.status != 'paid' &&
+      invoice.status != 'draft' &&
+      invoice.dueAt != null &&
+      invoice.dueAt!.isBefore(DateTime.now());
+}
+
+// ─── Helper icon SVG selon statut (overdue > paid > sent > draft) ─────────
+
+({String asset, Color color}) _pdfIconConfig(Invoice invoice) {
+  if (_isOverdue(invoice)) {
+    return (
+      asset: 'assets/icons/pdf.actif.svg',
+      color: const Color(0xFFEF4444),
+    );
+  }
+  switch (invoice.status) {
+    case 'paid':
+      return (
+        asset: 'assets/icons/pdf.actif.svg',
+        color: const Color(0xFF22C55E),
+      );
+    case 'sent':
+      return (
+        asset: 'assets/icons/pdf.actif.svg',
+        color: const Color(0xFF305DA8),
+      );
+    default:
+      return (
+        asset: 'assets/icons/pdf-inactifs.svg',
+        color: const Color(0xFF9CA3AF),
+      );
+  }
+}
+
 // ─── List tile (1 colonne) ─────────────────────────────────────────────────
 
 class _PdfListTile extends StatelessWidget {
@@ -231,6 +519,7 @@ class _PdfListTile extends StatelessWidget {
     final dateFmt = DateFormat('dd MMM yyyy', 'fr_FR');
     final euroFmt = NumberFormat.currency(
         locale: 'fr_FR', symbol: '\u20AC', decimalDigits: 2);
+    final iconCfg = _pdfIconConfig(invoice);
 
     return Material(
       color: Theme.of(context).colorScheme.surface,
@@ -243,15 +532,18 @@ class _PdfListTile extends StatelessWidget {
           child: Row(
             children: [
               // ── Icone PDF ──
-              Container(
+              SizedBox(
                 width: 44,
                 height: 44,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFDC2626).withAlpha(15),
-                  borderRadius: BorderRadius.circular(12),
+                child: Center(
+                  child: SvgPicture.asset(
+                    iconCfg.asset,
+                    width: 32,
+                    height: 32,
+                    colorFilter:
+                        ColorFilter.mode(iconCfg.color, BlendMode.srcIn),
+                  ),
                 ),
-                child: const Icon(LucideIcons.fileText,
-                    color: Color(0xFFDC2626), size: 22),
               ),
               const SizedBox(width: 12),
               // ── Infos ──
@@ -266,7 +558,9 @@ class _PdfListTile extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 4),
+                    _StatusBadge(status: invoice.status),
+                    const SizedBox(height: 4),
                     Text(
                       dateFmt.format(invoice.createdAt.toLocal()),
                       style: const TextStyle(
@@ -311,6 +605,7 @@ class _PdfGridCard extends StatelessWidget {
     final dateFmt = DateFormat('dd/MM/yy', 'fr_FR');
     final euroFmt = NumberFormat.currency(
         locale: 'fr_FR', symbol: '\u20AC', decimalDigits: 2);
+    final iconCfg = _pdfIconConfig(invoice);
 
     return Material(
       color: Theme.of(context).colorScheme.surface,
@@ -324,17 +619,20 @@ class _PdfGridCard extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               // ── Icone PDF ──
-              Container(
+              SizedBox(
                 width: 48,
                 height: 48,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFDC2626).withAlpha(15),
-                  borderRadius: BorderRadius.circular(14),
+                child: Center(
+                  child: SvgPicture.asset(
+                    iconCfg.asset,
+                    width: 32,
+                    height: 32,
+                    colorFilter:
+                        ColorFilter.mode(iconCfg.color, BlendMode.srcIn),
+                  ),
                 ),
-                child: const Icon(LucideIcons.fileText,
-                    color: Color(0xFFDC2626), size: 24),
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 8),
               // ── Nom client ──
               Text(
                 invoice.clientName ?? 'Client',
@@ -344,6 +642,9 @@ class _PdfGridCard extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 textAlign: TextAlign.center,
               ),
+              const SizedBox(height: 4),
+              // ── Badge statut ──
+              _StatusBadge(status: invoice.status),
               const SizedBox(height: 4),
               // ── Montant ──
               Text(
@@ -401,7 +702,7 @@ class _EmptyState extends StatelessWidget {
           const SizedBox(height: 4),
           Text(
             hasSearch
-                ? 'Essayez un autre terme de recherche'
+                ? 'Essayez d\'autres filtres'
                 : 'G\u00E9n\u00E9rez votre premi\u00E8re facture\npour la retrouver ici',
             textAlign: TextAlign.center,
             style: const TextStyle(

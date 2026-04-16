@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -9,6 +10,7 @@ import 'package:intl/intl.dart';
 import '../../core/models/client.dart';
 import '../../core/models/project.dart';
 import '../../core/providers/clients_provider.dart';
+import '../../core/providers/profile_provider.dart';
 import '../../core/providers/projects_provider.dart';
 import '../../core/providers/sessions_provider.dart';
 
@@ -1380,6 +1382,8 @@ class _EmptyProjectsInline extends StatelessWidget {
           icon: const Icon(LucideIcons.plus, size: 18),
           label: const Text('Nouveau projet'),
           style: FilledButton.styleFrom(
+            backgroundColor: const Color(0xFF305DA8),
+            foregroundColor: Colors.white,
             minimumSize: const Size(double.infinity, 48),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12),
@@ -1426,10 +1430,18 @@ class _ProjectFormSheetState extends ConsumerState<ProjectFormSheet> {
     _rate = TextEditingController(
         text: p != null ? p.hourlyRate.toStringAsFixed(0) : '');
     _currency = p?.currency ?? 'EUR';
-    if (!_isEdit) _loadLastRate();
+    if (!_isEdit) _preFillRate();
   }
 
-  Future<void> _loadLastRate() async {
+  Future<void> _preFillRate() async {
+    final profile = ref.read(profileProvider).valueOrNull;
+    final defaultRate = profile?.defaultHourlyRate;
+    if (defaultRate != null && mounted && _rate.text.isEmpty) {
+      _rate.text = defaultRate == defaultRate.truncateToDouble()
+          ? defaultRate.toInt().toString()
+          : defaultRate.toStringAsFixed(2);
+      return;
+    }
     final prefs = await SharedPreferences.getInstance();
     final last = prefs.getDouble(_kLastRate);
     if (last != null && mounted && _rate.text.isEmpty) {
@@ -1521,10 +1533,21 @@ class _ProjectFormSheetState extends ConsumerState<ProjectFormSheet> {
               const SizedBox(height: 20),
               TextFormField(
                 controller: _name,
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   labelText: 'Nom du projet *',
                   hintText: 'ex : Site e-commerce, Refonte logo\u2026',
-                  prefixIcon: Icon(Icons.folder_outlined),
+                  prefixIcon: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: SvgPicture.asset(
+                      'assets/icons/folder-inactif.svg',
+                      width: 20,
+                      height: 20,
+                      colorFilter: const ColorFilter.mode(
+                        Color(0xFF9CA3AF),
+                        BlendMode.srcIn,
+                      ),
+                    ),
+                  ),
                 ),
                 textCapitalization: TextCapitalization.words,
                 validator: (v) =>

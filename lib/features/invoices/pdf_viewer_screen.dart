@@ -25,107 +25,33 @@ class PdfViewerScreen extends ConsumerWidget {
   }
 
   Future<void> _share(BuildContext context, WidgetRef ref) async {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 40,
-                height: 4,
-                margin: const EdgeInsets.only(bottom: 12),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE5E7EB),
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              ListTile(
-                leading: const Icon(LucideIcons.mail, color: Color(0xFF2563EB)),
-                title: const Text('Envoyer par email'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _shareByEmail(context, ref);
-                },
-              ),
-              ListTile(
-                leading: const Icon(LucideIcons.messageCircle,
-                    color: Color(0xFF25D366)),
-                title: const Text('Envoyer par WhatsApp'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _shareWhatsApp(context, ref);
-                },
-              ),
-              ListTile(
-                leading: const Icon(LucideIcons.share2, color: Color(0xFF6B7280)),
-                title: const Text('Autres options'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _shareGeneric(context, ref);
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Future<void> _shareByEmail(BuildContext context, WidgetRef ref) async {
     final messenger = ScaffoldMessenger.of(context);
     try {
       await Share.shareXFiles(
         [XFile(filePath, mimeType: 'application/pdf')],
         subject: 'Facture ${invoice.invoiceNumber}',
-        text: 'Bonjour,\n\n'
-            'Veuillez trouver ci-joint la facture ${invoice.invoiceNumber}.\n\n'
-            'Cordialement',
-      );
-      await ref.read(invoicesProvider.notifier).markAsSentByNumber(
-            invoice.invoiceNumber,
-            via: 'email',
-            to: invoice.clientEmail,
-          );
-    } catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text('Erreur envoi : $e')));
-    }
-  }
-
-  Future<void> _shareWhatsApp(BuildContext context, WidgetRef ref) async {
-    final messenger = ScaffoldMessenger.of(context);
-    try {
-      await Share.shareXFiles(
-        [XFile(filePath, mimeType: 'application/pdf')],
         text: 'Facture ${invoice.invoiceNumber}',
       );
       await ref.read(invoicesProvider.notifier).markAsSentByNumber(
             invoice.invoiceNumber,
-            via: 'WhatsApp',
+            via: 'shared',
           );
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text('Erreur envoi : $e')));
     }
   }
 
-  Future<void> _shareGeneric(BuildContext context, WidgetRef ref) async {
+  Future<void> _markAsPaid(BuildContext context, WidgetRef ref) async {
     final messenger = ScaffoldMessenger.of(context);
     try {
-      await Share.shareXFiles(
-        [XFile(filePath, mimeType: 'application/pdf')],
-        subject: 'Facture ${invoice.invoiceNumber}',
+      await ref
+          .read(invoicesProvider.notifier)
+          .updateStatus(invoice.id, 'paid');
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Facture marquée comme payée')),
       );
-      await ref.read(invoicesProvider.notifier).markAsSentByNumber(
-            invoice.invoiceNumber,
-            via: 'autre',
-          );
     } catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text('Erreur envoi : $e')));
+      messenger.showSnackBar(SnackBar(content: Text('Erreur : $e')));
     }
   }
 
@@ -136,6 +62,7 @@ class PdfViewerScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final inv = _currentInvoice(ref);
+    final isPaid = inv.status == 'paid';
 
     return Scaffold(
       appBar: AppBar(
@@ -149,7 +76,7 @@ class PdfViewerScreen extends ConsumerWidget {
               height: 22,
             ),
             onPressed: () => _share(context, ref),
-            tooltip: 'Renvoyer',
+            tooltip: 'Partager',
           ),
         ],
       ),
@@ -181,6 +108,51 @@ class PdfViewerScreen extends ConsumerWidget {
               ),
             ),
         ],
+      ),
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: Container(
+          height: 64,
+          color: Colors.white,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: Row(
+            children: [
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: () => _share(context, ref),
+                  icon: const Icon(LucideIcons.share2, size: 18),
+                  label: const Text('Partager'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFF305DA8),
+                    foregroundColor: Colors.white,
+                    minimumSize: const Size.fromHeight(48),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
+              if (!isPaid) ...[
+                const SizedBox(width: 8),
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: () => _markAsPaid(context, ref),
+                    icon: const Icon(LucideIcons.checkCircle, size: 18),
+                    label: const Text('Marquer payée'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFF22C55E),
+                      foregroundColor: Colors.white,
+                      minimumSize: const Size.fromHeight(48),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }

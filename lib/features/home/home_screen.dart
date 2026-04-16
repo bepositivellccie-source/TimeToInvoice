@@ -698,7 +698,7 @@ class _DashboardKpi extends ConsumerWidget {
             icon: Icons.schedule_outlined,
             label: 'Travaillé',
             value: '${totalHours}h',
-            color: const Color(0xFF2563EB),
+            color: const Color(0xFF305DA8),
             isDark: isDark,
           ),
           const SizedBox(width: 10),

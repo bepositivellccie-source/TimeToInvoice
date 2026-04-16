@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -96,21 +97,24 @@ class _InvoicesHistoryScreenState
                 ),
               ),
               const SizedBox(height: 10),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  for (final item in _statusItems)
-                    _filterChip(
-                      label: item.$2,
-                      color: item.$3,
-                      isSelected: _filterStatus == item.$1,
-                      onTap: () {
-                        setState(() => _filterStatus = item.$1);
-                        setSheetState(() {});
-                      },
-                    ),
-                ],
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    for (var i = 0; i < _statusItems.length; i++) ...[
+                      if (i > 0) const SizedBox(width: 8),
+                      _filterChip(
+                        label: _statusItems[i].$2,
+                        color: _statusItems[i].$3,
+                        isSelected: _filterStatus == _statusItems[i].$1,
+                        onTap: () {
+                          setState(() => _filterStatus = _statusItems[i].$1);
+                          setSheetState(() {});
+                        },
+                      ),
+                    ],
+                  ],
+                ),
               ),
               const SizedBox(height: 20),
 
@@ -181,7 +185,7 @@ class _InvoicesHistoryScreenState
 
   static const _statusItems = <(String?, String, Color)>[
     (null, 'Tout', Color(0xFF6B7280)),
-    ('sent', 'À encaisser', Color(0xFF2563EB)),
+    ('sent', 'À encaisser', Color(0xFF305DA8)),
     ('overdue', 'En retard', Color(0xFFDC2626)),
     ('paid', 'Payées', Color(0xFF16A34A)),
   ];
@@ -490,6 +494,53 @@ class _InvoicesHistoryScreenState
   }
 }
 
+// ─── Helper : détection facture en retard (via due_at, pas via status) ────
+
+bool _isOverdue(Invoice invoice) {
+  return invoice.status != 'paid' &&
+      invoice.status != 'draft' &&
+      invoice.dueAt != null &&
+      invoice.dueAt!.isBefore(DateTime.now());
+}
+
+const _tileStatusColors = {
+  'draft': Color(0xFF6B7280),
+  'sent': Color(0xFF305DA8),
+  'paid': Color(0xFF16A34A),
+  'cancelled': Color(0xFF9CA3AF),
+};
+
+Color _statusBadgeColor(Invoice inv) {
+  if (inv.isOverdue) return AppColors.danger;
+  return _tileStatusColors[inv.status] ?? const Color(0xFF6B7280);
+}
+
+class _StatusBadge extends StatelessWidget {
+  final Invoice invoice;
+
+  const _StatusBadge({required this.invoice});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _statusBadgeColor(invoice);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withAlpha(20),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Text(
+        invoice.displayStatus,
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          color: color,
+        ),
+      ),
+    );
+  }
+}
+
 // ─── Invoice tile — swipe gauche → delete ──────────────────────────────────
 
 class _InvoiceTile extends StatefulWidget {
@@ -510,13 +561,6 @@ class _InvoiceTile extends StatefulWidget {
 class _InvoiceTileState extends State<_InvoiceTile> {
   double _dragOffset = 0;
 
-  static const _statusColors = {
-    'draft': Color(0xFF6B7280),
-    'sent': Color(0xFF2563EB),
-    'paid': Color(0xFF16A34A),
-    'cancelled': Color(0xFF9CA3AF),
-  };
-
   @override
   Widget build(BuildContext context) {
     final inv = widget.invoice;
@@ -526,10 +570,6 @@ class _InvoiceTileState extends State<_InvoiceTile> {
         symbol: '€',
         decimalDigits: 2);
     final screenWidth = MediaQuery.sizeOf(context).width;
-
-    final statusColor = inv.isOverdue
-        ? AppColors.danger
-        : _statusColors[inv.status] ?? const Color(0xFF6B7280);
 
     final deleteOpacity = (_dragOffset.abs() / 80).clamp(0.0, 1.0);
 
@@ -597,11 +637,37 @@ class _InvoiceTileState extends State<_InvoiceTile> {
                           width: 44,
                           height: 44,
                           decoration: BoxDecoration(
-                            color: statusColor.withAlpha(20),
+                            color: _statusBadgeColor(inv).withAlpha(20),
                             borderRadius: BorderRadius.circular(12),
                           ),
-                          child: Icon(LucideIcons.fileText,
-                              color: statusColor, size: 22),
+                          child: Builder(
+                            builder: (_) {
+                              final overdue = _isOverdue(inv);
+                              final isPaid = inv.status == 'paid';
+                              final isDraft = inv.status == 'draft';
+                              final assetName = isDraft
+                                  ? 'assets/icons/Facture-inactif.svg'
+                                  : 'assets/icons/Facture-actif.svg';
+                              final iconColor = overdue
+                                  ? const Color(0xFFEF4444)
+                                  : isPaid
+                                      ? const Color(0xFF22C55E)
+                                      : isDraft
+                                          ? const Color(0xFF9CA3AF)
+                                          : const Color(0xFF305DA8);
+                              return Center(
+                                child: SvgPicture.asset(
+                                  assetName,
+                                  width: 24,
+                                  height: 24,
+                                  colorFilter: ColorFilter.mode(
+                                    iconColor,
+                                    BlendMode.srcIn,
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
                         ),
                         const SizedBox(width: 12),
                         // 2. Colonne centrale
@@ -609,71 +675,72 @@ class _InvoiceTileState extends State<_InvoiceTile> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                inv.clientName ?? '—',
-                                style: const TextStyle(
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w600,
-                                  color: Color(0xFF111827),
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
+                              // Ligne 1 : nom client + montant + chevron
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      inv.clientName ?? '—',
+                                      style: const TextStyle(
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w600,
+                                        color: Color(0xFF111827),
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    euroFmt.format(inv.totalAmount),
+                                    style: const TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w600,
+                                      color: Color(0xFF111827),
+                                    ),
+                                  ),
+                                  const Icon(LucideIcons.chevronRight,
+                                      color: Color(0xFF9CA3AF), size: 18),
+                                ],
                               ),
                               const SizedBox(height: 2),
+                              // Ligne 2 : date
                               Text(
                                 dateFmt.format(inv.createdAt.toLocal()),
                                 style: const TextStyle(
-                                  fontSize: 12,
+                                  fontSize: 13,
                                   color: Color(0xFF6B7280),
                                 ),
                               ),
-                              const SizedBox(height: 2),
-                              Text(
-                                'N° ${inv.invoiceNumber}',
-                                style: const TextStyle(
-                                  fontSize: 11,
-                                  color: Color(0xFF9CA3AF),
-                                ),
+                              const SizedBox(height: 4),
+                              // Ligne 3 : N° + badge statut (+ sentVia)
+                              Row(
+                                children: [
+                                  Text(
+                                    'N° ${inv.invoiceNumber}',
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      color: Color(0xFF9CA3AF),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  _StatusBadge(invoice: inv),
+                                  if (inv.sentVia == 'email' ||
+                                      inv.sentVia == 'whatsapp') ...[
+                                    const SizedBox(width: 6),
+                                    Icon(
+                                      inv.sentVia == 'whatsapp'
+                                          ? LucideIcons.messageCircle
+                                          : LucideIcons.mail,
+                                      size: 14,
+                                      color: const Color(0xFF9CA3AF),
+                                    ),
+                                  ],
+                                ],
                               ),
                             ],
                           ),
                         ),
-                        // 3. Montant + statut alignés droite
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            Text(
-                              euroFmt.format(inv.totalAmount),
-                              style: const TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w600,
-                                color: Color(0xFF111827),
-                              ),
-                            ),
-                            // Espace = SizedBox(2) + ligne date (12px hauteur ~18 rendu) + SizedBox(2)
-                            const SizedBox(height: 18),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 8, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: statusColor.withAlpha(20),
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: Text(
-                                inv.displayStatus,
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w700,
-                                  color: statusColor,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(width: 4),
-                        // 4. Chevron
-                        const Icon(LucideIcons.chevronRight,
-                            color: Color(0xFF9CA3AF), size: 18),
                       ],
                     ),
                   ),
@@ -705,7 +772,7 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
 
   static const _sheetStatusColors = {
     'draft': Color(0xFF6B7280),
-    'sent': Color(0xFF2563EB),
+    'sent': Color(0xFF305DA8),
     'paid': Color(0xFF16A34A),
     'cancelled': Color(0xFF9CA3AF),
   };
@@ -821,7 +888,7 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
       if (mounted) {
         await ref.read(invoicesProvider.notifier).markAsSentByNumber(
               inv.invoiceNumber,
-              via: 'email',
+              via: 'shared',
               to: inv.clientEmail,
             );
       }
@@ -955,17 +1022,13 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
           ),
           const SizedBox(height: 10),
 
-          // Envoyer par email (draft ou sent — relance)
+          // Partager la facture (share sheet natif)
           if (inv.status != 'paid' && inv.status != 'cancelled')
             _actionButton(
               context: context,
-              icon: _sending
-                  ? null
-                  : (inv.status == 'sent'
-                      ? LucideIcons.forward
-                      : LucideIcons.mail),
-              label: inv.status == 'sent' ? 'Relancer par email' : 'Envoyer par email',
-              color: const Color(0xFF2563EB),
+              icon: _sending ? null : LucideIcons.share2,
+              label: 'Partager',
+              color: const Color(0xFF305DA8),
               loading: _sending,
               onTap: _sending ? null : () => _sendEmail(inv),
             ),

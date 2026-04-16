@@ -39,6 +39,9 @@ class InvoiceData {
   final int paymentDays;       // 30 par défaut
   final String currency;       // "EUR"
 
+  /// Taux TVA en % (0 = franchise art. 293 B, 20 = assujetti standard).
+  final double tvaRate;
+
   const InvoiceData({
     required this.invoiceNumber,
     required this.issueDate,
@@ -53,10 +56,17 @@ class InvoiceData {
     required this.lines,
     this.paymentDays = 30,
     this.currency = 'EUR',
+    this.tvaRate = 0,
   });
 
   double get totalHT => lines.fold(0.0, (s, l) => s + l.amount);
-  // Auto-entrepreneur : TVA non applicable
-  double get tva => 0.0;
-  double get totalTTC => totalHT;
+  double get tva => totalHT * tvaRate / 100;
+  double get totalTTC => totalHT + tva;
+
+  bool get isVatFranchise => tvaRate == 0;
+
+  /// Mention légale TVA à afficher sur la facture.
+  String get vatMention => isVatFranchise
+      ? 'TVA non applicable — art. 293 B CGI'
+      : 'TVA ${tvaRate.toStringAsFixed(0)} %';
 }

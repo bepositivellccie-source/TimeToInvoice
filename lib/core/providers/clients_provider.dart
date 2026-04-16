@@ -5,7 +5,8 @@ import 'supabase_provider.dart';
 class ClientsNotifier extends AsyncNotifier<List<Client>> {
   Future<List<Client>> _fetch() async {
     final supabase = ref.read(supabaseClientProvider);
-    final data = await supabase.from('clients').select().order('name');
+    final data =
+        await supabase.from('client_status').select().order('name');
     return (data as List).map((e) => Client.fromJson(e)).toList();
   }
 

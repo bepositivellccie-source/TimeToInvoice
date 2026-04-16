@@ -27,15 +27,7 @@ class ProfileNotifier extends AsyncNotifier<Profile?> {
     await supabase.from('profiles').upsert(
       {
         'user_id': userId,
-        'display_name': profile.displayName,
-        'street': profile.street,
-        'zip_code': profile.zipCode,
-        'city': profile.city,
-        'siret': profile.siret,
-        'tva_number': profile.tvaNumber,
-        'email': profile.email,
-        'phone': profile.phone,
-        'iban': profile.iban,
+        ...profile.toJson(),
         'updated_at': DateTime.now().toUtc().toIso8601String(),
       },
       onConflict: 'user_id',

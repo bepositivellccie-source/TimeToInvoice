@@ -7,15 +7,15 @@ import 'package:flutter/material.dart';
 // ─── Primary ────────────────────────────────────────────────────────────────
 
 class FigmaPrimary {
-  static const Color c900 = Color(0xFF10197A);
-  static const Color c800 = Color(0xFF1A2793);
-  static const Color c700 = Color(0xFF2A3BB7);
-  static const Color c600 = Color(0xFF3D53DB);
-  static const Color c500 = Color(0xFF546FFF); // ← couleur principale
-  static const Color c400 = Color(0xFF7E95FF);
-  static const Color c300 = Color(0xFF98ABFF);
-  static const Color c200 = Color(0xFFBAC8FF);
-  static const Color c100 = Color(0xFFDCE4FF);
+  static const Color c900 = Color(0xFF305DA8);
+  static const Color c800 = Color(0xFF305DA8);
+  static const Color c700 = Color(0xFF305DA8);
+  static const Color c600 = Color(0xFF305DA8);
+  static const Color c500 = Color(0xFF305DA8); // ← couleur principale
+  static const Color c400 = Color(0xFF305DA8);
+  static const Color c300 = Color(0xFF305DA8);
+  static const Color c200 = Color(0xFF305DA8);
+  static const Color c100 = Color(0xFF305DA8);
   static const Color c0   = Color(0xFFFFFFFF);
 }
 
@@ -58,10 +58,10 @@ class FigmaWarning {
 }
 
 class FigmaInfo {
-  static const Color c700 = Color(0xFF2A60B7);
-  static const Color c500 = Color(0xFF54A6FF);
-  static const Color c300 = Color(0xFF98D3FF);
-  static const Color c100 = Color(0xFFDCF3FF);
+  static const Color c700 = Color(0xFF305DA8);
+  static const Color c500 = Color(0xFF305DA8);
+  static const Color c300 = Color(0xFF305DA8);
+  static const Color c100 = Color(0xFF305DA8);
 }
 
 // ─── Spacing (base 8dp grid, adapté mobile) ─────────────────────────────────

@@ -210,11 +210,11 @@ Future<Uint8List> buildInvoicePdf(InvoiceData inv) async {
                       regular: regular, bold: bold),
                   pw.Divider(color: _gray200, height: 1),
                   _totalRow(
-                    'TVA (0 %)',
+                    'TVA (${inv.tvaRate.toStringAsFixed(0)} %)',
                     euro.format(inv.tva),
                     regular: regular,
                     bold: bold,
-                    note: 'Art. 293 B CGI',
+                    note: inv.isVatFranchise ? 'Art. 293 B CGI' : null,
                     italic: italic,
                   ),
                   pw.Container(
@@ -253,7 +253,7 @@ Future<Uint8List> buildInvoicePdf(InvoiceData inv) async {
               pw.SizedBox(height: 6),
               // TVA
               pw.Text(
-                'TVA non applicable — art. 293 B du CGI',
+                inv.vatMention,
                 style: b(9),
               ),
               pw.SizedBox(height: 4),

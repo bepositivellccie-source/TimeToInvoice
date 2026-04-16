@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,10 +6,9 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:lucide_icons/lucide_icons.dart';
-import 'package:printing/printing.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../core/models/invoice.dart';
 import '../../core/models/invoice_data.dart';
 import '../../core/models/profile.dart';
 import '../../core/models/session.dart';
@@ -22,6 +20,7 @@ import '../../core/providers/invoices_provider.dart';
 import '../../core/utils/invoice_number.dart';
 import '../../core/utils/invoice_pdf.dart';
 import '../../core/utils/paywall_gate.dart';
+import 'pdf_viewer_screen.dart';
 
 // TODO: false avant release
 const bool kAdminMode = true;
@@ -36,49 +35,11 @@ class InvoiceScreen extends ConsumerStatefulWidget {
 }
 
 class _InvoiceScreenState extends ConsumerState<InvoiceScreen> {
-  // Profil vendeur — chargé depuis la table profiles
-  final _sellerNameCtrl = TextEditingController();
-  final _sellerAddressCtrl = TextEditingController();
-  final _sellerSiretCtrl = TextEditingController();
-  bool _profileLoaded = false;
-
   // Sessions sélectionnées
   final Set<String> _selected = {};
   bool _allInitialized = false;
 
   bool _generating = false;
-
-  @override
-  void initState() {
-    super.initState();
-    // Chargement via profileProvider (voir ref.listen dans build)
-  }
-
-  @override
-  void dispose() {
-    _sellerNameCtrl.dispose();
-    _sellerAddressCtrl.dispose();
-    _sellerSiretCtrl.dispose();
-    super.dispose();
-  }
-
-  // ─── Sauvegarde profil vendeur dans la table profiles ────────────────────
-
-  Future<void> _saveSellerProfile() async {
-    final existing = ref.read(profileProvider).valueOrNull;
-    await ref.read(profileProvider.notifier).save(Profile(
-          displayName: _sellerNameCtrl.text.trim().isEmpty
-              ? null
-              : _sellerNameCtrl.text.trim(),
-          street: existing?.street,
-          zipCode: existing?.zipCode,
-          city: existing?.city,
-          siret: _sellerSiretCtrl.text.trim().isEmpty
-              ? null
-              : _sellerSiretCtrl.text.trim(),
-          tvaNumber: existing?.tvaNumber,
-        ));
-  }
 
   // ─── Initialisation sélection par défaut ─────────────────────────────────
 
@@ -105,7 +66,7 @@ class _InvoiceScreenState extends ConsumerState<InvoiceScreen> {
   InvoiceData _buildInvoiceData({
     required String invoiceNumber,
     required List<WorkSession> sessions,
-    required String projectName,
+    required Profile profile,
     required double hourlyRate,
     required String currency,
     required String buyerName,
@@ -133,78 +94,34 @@ class _InvoiceScreenState extends ConsumerState<InvoiceScreen> {
       );
     }).toList();
 
+    final tvaRate = profile.tvaRegime == 'assujetti'
+        ? (profile.tvaRate ?? 20.0)
+        : 0.0;
+
     return InvoiceData(
       invoiceNumber: invoiceNumber,
       issueDate: DateTime.now(),
-      sellerName: _sellerNameCtrl.text.trim().isEmpty
-          ? (Supabase.instance.client.auth.currentUser?.email ?? 'Vendeur')
-          : _sellerNameCtrl.text.trim(),
-      sellerAddress: _sellerAddressCtrl.text.trim().isEmpty
-          ? null
-          : _sellerAddressCtrl.text.trim(),
-      sellerSiret: _sellerSiretCtrl.text.trim().isEmpty
-          ? null
-          : _sellerSiretCtrl.text.trim(),
-      sellerVatNumber: ref.read(profileProvider).valueOrNull?.tvaNumber,
+      sellerName: profile.displayName ??
+          (Supabase.instance.client.auth.currentUser?.email ?? 'Vendeur'),
+      sellerAddress: profile.fullAddress,
+      sellerSiret: profile.siret,
+      sellerVatNumber: profile.tvaNumber,
       buyerName: buyerName,
       buyerAddress: buyerAddress,
       buyerSiret: buyerSiret,
       buyerEmail: buyerEmail,
       lines: lines,
       currency: currency,
+      tvaRate: tvaRate,
     );
   }
 
-  // ─── Prévisualisation PDF ─────────────────────────────────────────────────
+  // ─── Génération + insert DB + ouverture PdfViewerScreen ─────────────────
 
-  Future<void> _preview(
-    List<WorkSession> sessions,
-    String projectName,
-    double hourlyRate,
-    String currency,
-    String buyerName, {
-    String? buyerAddress,
-    String? buyerSiret,
-    String? buyerEmail,
-  }) async {
-    setState(() => _generating = true);
-    try {
-      await _saveSellerProfile();
-      // Numéro temporaire pour la prévisualisation
-      final data = _buildInvoiceData(
-        invoiceNumber: 'APERÇU',
-        sessions: sessions,
-        projectName: projectName,
-        hourlyRate: hourlyRate,
-        currency: currency,
-        buyerName: buyerName,
-        buyerAddress: buyerAddress,
-        buyerSiret: buyerSiret,
-        buyerEmail: buyerEmail,
-      );
-      final bytes = await buildInvoicePdf(data);
-      if (!mounted) return;
-      await Printing.layoutPdf(
-        onLayout: (_) async => bytes,
-        name: 'Aperçu facture',
-      );
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erreur PDF : $e')),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _generating = false);
-    }
-  }
-
-  // ─── Génération + insert DB ──────────────────────────────────────────────
-
-  Future<void> _generateAndShare({
+  Future<void> _generate({
     required List<WorkSession> sessions,
+    required Profile profile,
     required String clientId,
-    required String projectName,
     required double hourlyRate,
     required String currency,
     required String buyerName,
@@ -212,23 +129,19 @@ class _InvoiceScreenState extends ConsumerState<InvoiceScreen> {
     String? buyerSiret,
     String? buyerEmail,
   }) async {
-    // Vérifier le quota freemium avant de générer
     if (!kAdminMode) {
       if (!await checkInvoiceQuota(context, ref)) return;
     }
 
     setState(() => _generating = true);
     try {
-      await _saveSellerProfile();
       final supabase = Supabase.instance.client;
-
-      // Numéro séquentiel réel
       final invoiceNumber = await nextInvoiceNumber(supabase);
 
       final data = _buildInvoiceData(
         invoiceNumber: invoiceNumber,
         sessions: sessions,
-        projectName: projectName,
+        profile: profile,
         hourlyRate: hourlyRate,
         currency: currency,
         buyerName: buyerName,
@@ -239,13 +152,12 @@ class _InvoiceScreenState extends ConsumerState<InvoiceScreen> {
 
       final bytes = await buildInvoicePdf(data);
 
-      // Sauvegarde locale du PDF pour renvoi ultérieur
+      // Sauvegarde locale du PDF
       final dir = await getApplicationDocumentsDirectory();
       final file = File('${dir.path}/Facture_$invoiceNumber.pdf');
       await file.writeAsBytes(bytes);
 
       final userId = supabase.auth.currentUser!.id;
-      final clientName = buyerName;
       final now = DateTime.now();
 
       // Upload PDF dans Supabase Storage
@@ -265,36 +177,39 @@ class _InvoiceScreenState extends ConsumerState<InvoiceScreen> {
         storagePath = null;
       }
 
-      // Insert en DB
-      await supabase.from('invoices').insert({
-        'user_id': userId,
-        'client_id': clientId,
-        'invoice_number': invoiceNumber,
-        'total_amount': data.totalTTC,
-        'status': 'draft',
-        'pdf_path': storagePath,
-        'issued_at': now.toIso8601String(),
-        'due_at': now.add(const Duration(days: 30)).toIso8601String(),
-        'client_name': clientName,
-      });
+      // Insert en DB + récupération de la ligne créée
+      final inserted = await supabase
+          .from('invoices')
+          .insert({
+            'user_id': userId,
+            'client_id': clientId,
+            'invoice_number': invoiceNumber,
+            'total_amount': data.totalTTC,
+            'status': 'draft',
+            'pdf_path': storagePath,
+            'issued_at': now.toIso8601String(),
+            'due_at': now.add(const Duration(days: 30)).toIso8601String(),
+            'client_name': buyerName,
+          })
+          .select()
+          .single();
 
-      // Rafraîchir les providers Factures / PDFs
+      final invoice = Invoice.fromJson(inserted);
+
+      if (!mounted) return;
+
+      // Navigation vers le viewer embarqué
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => PdfViewerScreen(
+            filePath: file.path,
+            invoice: invoice,
+          ),
+        ),
+      );
+
+      // Au retour → rafraîchir la liste
       ref.invalidate(invoicesProvider);
-
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-          ..clearSnackBars()
-          ..showSnackBar(
-            SnackBar(
-              content: Text('Facture $invoiceNumber générée'),
-              backgroundColor: const Color(0xFF16A34A),
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
-
-        // Bottom sheet partage
-        _showShareSheet(bytes, invoiceNumber, buyerEmail);
-      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -306,146 +221,11 @@ class _InvoiceScreenState extends ConsumerState<InvoiceScreen> {
     }
   }
 
-  // ─── Bottom sheet partage ───────────────────────────────────────────────
-
-  void _showShareSheet(
-      Uint8List bytes, String invoiceNumber, String? buyerEmail) {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 40,
-                height: 4,
-                margin: const EdgeInsets.only(bottom: 12),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE5E7EB),
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              ListTile(
-                leading: const Icon(LucideIcons.mail,
-                    color: Color(0xFF2563EB)),
-                title: const Text('Envoyer par email'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _shareByEmail(bytes, invoiceNumber, buyerEmail);
-                },
-              ),
-              ListTile(
-                leading: const Icon(LucideIcons.messageCircle,
-                    color: Color(0xFF25D366)),
-                title: const Text('Envoyer par WhatsApp'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _shareWhatsApp(bytes, invoiceNumber);
-                },
-              ),
-              ListTile(
-                leading: const Icon(LucideIcons.share2,
-                    color: Color(0xFF6B7280)),
-                title: const Text('Autres options'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _shareGeneric(bytes, invoiceNumber);
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  // ─── Partage par email ──────────────────────────────────────────────────
-
-  Future<void> _shareByEmail(
-      Uint8List bytes, String invoiceNumber, String? buyerEmail) async {
-    final dir = await getTemporaryDirectory();
-    final file = File('${dir.path}/Facture_$invoiceNumber.pdf');
-    await file.writeAsBytes(bytes);
-
-    await Share.shareXFiles(
-      [XFile(file.path, mimeType: 'application/pdf')],
-      subject: 'Facture $invoiceNumber',
-      text: 'Bonjour,\n\n'
-          'Veuillez trouver ci-joint la facture $invoiceNumber.\n\n'
-          'Cordialement',
-    );
-    await ref.read(invoicesProvider.notifier).markAsSentByNumber(
-          invoiceNumber,
-          via: 'email',
-          to: buyerEmail,
-        );
-  }
-
-  // ─── Partage WhatsApp (via share sheet natif) ───────────────────────────
-
-  Future<void> _shareWhatsApp(Uint8List bytes, String invoiceNumber) async {
-    final dir = await getTemporaryDirectory();
-    final file = File('${dir.path}/Facture_$invoiceNumber.pdf');
-    await file.writeAsBytes(bytes);
-
-    await Share.shareXFiles(
-      [XFile(file.path, mimeType: 'application/pdf')],
-      text: 'Facture $invoiceNumber',
-    );
-    await ref.read(invoicesProvider.notifier).markAsSentByNumber(
-          invoiceNumber,
-          via: 'WhatsApp',
-        );
-  }
-
-  // ─── Partage générique ──────────────────────────────────────────────────
-
-  Future<void> _shareGeneric(Uint8List bytes, String invoiceNumber) async {
-    await Printing.sharePdf(
-      bytes: bytes,
-      filename: 'Facture_$invoiceNumber.pdf',
-    );
-    await ref.read(invoicesProvider.notifier).markAsSentByNumber(
-          invoiceNumber,
-          via: 'autre',
-        );
-  }
-
   // ─── Build ────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
-    // Initialise les contrôleurs quand le profil est disponible
-    ref.listen(profileProvider, (prev, next) {
-      if (!_profileLoaded && next.valueOrNull != null) {
-        final p = next.valueOrNull!;
-        setState(() {
-          _sellerNameCtrl.text = p.displayName ?? '';
-          _sellerAddressCtrl.text = p.fullAddress ?? '';
-          _sellerSiretCtrl.text = p.siret ?? '';
-          _profileLoaded = true;
-        });
-      }
-    });
-    // Profil déjà en cache (hot reload / retour écran)
-    if (!_profileLoaded) {
-      final cached = ref.read(profileProvider).valueOrNull;
-      if (cached != null) {
-        _sellerNameCtrl.text = cached.displayName ?? '';
-        _sellerAddressCtrl.text = cached.fullAddress ?? '';
-        _sellerSiretCtrl.text = cached.siret ?? '';
-        _profileLoaded = true;
-      } else if (!ref.read(profileProvider).isLoading) {
-        // Pas de profil créé encore — afficher le formulaire vide
-        _profileLoaded = true;
-      }
-    }
-
+    final profileAsync = ref.watch(profileProvider);
     final sessionsAsync =
         ref.watch(sessionsByProjectProvider(widget.projectId));
     final project = ref.watch(projectsProvider).valueOrNull
@@ -465,7 +245,7 @@ class _InvoiceScreenState extends ConsumerState<InvoiceScreen> {
           onPressed: () => context.pop(),
         ),
       ),
-      body: !_profileLoaded
+      body: profileAsync.isLoading
           ? const Center(child: CircularProgressIndicator())
           : sessionsAsync.when(
               loading: () =>
@@ -473,7 +253,6 @@ class _InvoiceScreenState extends ConsumerState<InvoiceScreen> {
               error: (e, _) =>
                   Center(child: Text('Erreur sessions : $e')),
               data: (sessions) {
-                // Initialise la sélection à toutes les sessions
                 WidgetsBinding.instance.addPostFrameCallback((_) {
                   if (!_allInitialized && mounted) {
                     setState(() => _initSelection(sessions));
@@ -483,6 +262,7 @@ class _InvoiceScreenState extends ConsumerState<InvoiceScreen> {
                 final hourlyRate = project?.hourlyRate ?? 0;
                 final currency = project?.currency ?? 'EUR';
                 final total = _computeTotal(sessions, hourlyRate);
+                final profile = profileAsync.valueOrNull;
 
                 return Column(
                   children: [
@@ -490,13 +270,8 @@ class _InvoiceScreenState extends ConsumerState<InvoiceScreen> {
                       child: ListView(
                         padding: const EdgeInsets.all(16),
                         children: [
-                          // Profil vendeur
-                          _SellerSection(
-                            nameCtrl: _sellerNameCtrl,
-                            addressCtrl: _sellerAddressCtrl,
-                            siretCtrl: _sellerSiretCtrl,
-                            expanded: _sellerNameCtrl.text.isEmpty,
-                          ),
+                          // Bandeau profil vendeur
+                          _SellerBanner(profile: profile),
                           const SizedBox(height: 16),
 
                           // Sessions à facturer
@@ -527,36 +302,31 @@ class _InvoiceScreenState extends ConsumerState<InvoiceScreen> {
                             currency: currency,
                             sessionCount: _selected.length,
                           ),
-                          const SizedBox(height: 80), // espace boutons
+                          const SizedBox(height: 80),
                         ],
                       ),
                     ),
 
-                    // Boutons action
+                    // Bouton Générer
                     _ActionBar(
-                      enabled: _selected.isNotEmpty && !_generating,
+                      enabled: _selected.isNotEmpty &&
+                          !_generating &&
+                          _isProfileComplete(profile),
                       generating: _generating,
-                      onPreview: () => _preview(
-                        sessions,
-                        project?.name ?? '',
-                        hourlyRate,
-                        currency,
-                        client?.name ?? 'Client',
-                        buyerAddress: client?.fullAddress,
-                        buyerSiret: client?.siret,
-                        buyerEmail: client?.email,
-                      ),
-                      onGenerate: () => _generateAndShare(
-                        sessions: sessions,
-                        clientId: project?.clientId ?? '',
-                        projectName: project?.name ?? '',
-                        hourlyRate: hourlyRate,
-                        currency: currency,
-                        buyerName: client?.name ?? 'Client',
-                        buyerAddress: client?.fullAddress,
-                        buyerSiret: client?.siret,
-                        buyerEmail: client?.email,
-                      ),
+                      onGenerate: () {
+                        if (profile == null) return;
+                        _generate(
+                          sessions: sessions,
+                          profile: profile,
+                          clientId: project?.clientId ?? '',
+                          hourlyRate: hourlyRate,
+                          currency: currency,
+                          buyerName: client?.name ?? 'Client',
+                          buyerAddress: client?.fullAddress,
+                          buyerSiret: client?.siret,
+                          buyerEmail: client?.email,
+                        );
+                      },
                     ),
                   ],
                 );
@@ -564,89 +334,86 @@ class _InvoiceScreenState extends ConsumerState<InvoiceScreen> {
             ),
     );
   }
+
+  bool _isProfileComplete(Profile? p) =>
+      p != null &&
+      (p.displayName?.isNotEmpty ?? false) &&
+      (p.siret?.isNotEmpty ?? false);
 }
 
-// ─── Section profil vendeur ───────────────────────────────────────────────────
+// ─── Bandeau profil vendeur ───────────────────────────────────────────────
 
-class _SellerSection extends StatefulWidget {
-  final TextEditingController nameCtrl;
-  final TextEditingController addressCtrl;
-  final TextEditingController siretCtrl;
-  final bool expanded;
+class _SellerBanner extends StatelessWidget {
+  final Profile? profile;
 
-  const _SellerSection({
-    required this.nameCtrl,
-    required this.addressCtrl,
-    required this.siretCtrl,
-    required this.expanded,
-  });
-
-  @override
-  State<_SellerSection> createState() => _SellerSectionState();
-}
-
-class _SellerSectionState extends State<_SellerSection> {
-  late bool _expanded;
-
-  @override
-  void initState() {
-    super.initState();
-    _expanded = widget.expanded;
-  }
+  const _SellerBanner({required this.profile});
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: Column(
-        children: [
-          ListTile(
-            leading: const Icon(Icons.person_outlined),
-            title: const Text('Mes informations (vendeur)',
-                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-            subtitle: widget.nameCtrl.text.isEmpty
-                ? const Text('À compléter',
-                    style: TextStyle(color: Color(0xFFDC2626), fontSize: 12))
-                : Text(widget.nameCtrl.text,
-                    style: const TextStyle(fontSize: 12)),
-            trailing: Icon(_expanded ? Icons.expand_less : Icons.expand_more),
-            onTap: () => setState(() => _expanded = !_expanded),
-          ),
-          if (_expanded)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-              child: Column(
-                children: [
-                  TextField(
-                    controller: widget.nameCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Nom / raison sociale *',
-                      prefixIcon: Icon(Icons.business_outlined),
-                    ),
-                    textInputAction: TextInputAction.next,
-                  ),
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: widget.addressCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Adresse',
-                      prefixIcon: Icon(Icons.location_on_outlined),
-                    ),
-                    textInputAction: TextInputAction.next,
-                  ),
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: widget.siretCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'SIRET (14 chiffres)',
-                      prefixIcon: Icon(Icons.tag_outlined),
-                    ),
-                    keyboardType: TextInputType.number,
-                    maxLength: 14,
-                    textInputAction: TextInputAction.done,
-                  ),
-                ],
+    final p = profile;
+    final complete = p != null &&
+        (p.displayName?.isNotEmpty ?? false) &&
+        (p.siret?.isNotEmpty ?? false);
+
+    if (complete) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: const Color(0xFFECFDF5),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFF86EFAC)),
+        ),
+        child: Row(
+          children: [
+            const Icon(LucideIcons.checkCircle,
+                color: Color(0xFF22C55E), size: 18),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                '${p.displayName} · SIRET ${p.siret}',
+                style: const TextStyle(
+                  fontSize: 13,
+                  color: Color(0xFF111827),
+                ),
               ),
             ),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFEF2F2),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFFCA5A5)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              'Profil vendeur incomplet',
+              style: const TextStyle(
+                fontSize: 13,
+                color: Color(0xFF991B1B),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: () => context.push('/profile'),
+            style: TextButton.styleFrom(
+              foregroundColor: const Color(0xFFDC2626),
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+            ),
+            child: const Text(
+              'Compléter mon profil',
+              style: TextStyle(fontWeight: FontWeight.w600),
+            ),
+          ),
         ],
       ),
     );
@@ -821,13 +588,11 @@ class _TotalCard extends StatelessWidget {
 class _ActionBar extends StatelessWidget {
   final bool enabled;
   final bool generating;
-  final VoidCallback onPreview;
   final VoidCallback onGenerate;
 
   const _ActionBar({
     required this.enabled,
     required this.generating,
-    required this.onPreview,
     required this.onGenerate,
   });
 
@@ -846,50 +611,23 @@ class _ActionBar extends StatelessWidget {
           ),
         ],
       ),
-      child: Row(
-        children: [
-          // Prévisualiser
-          Expanded(
-            child: OutlinedButton.icon(
-              onPressed: enabled ? onPreview : null,
-              icon: generating
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Icon(Icons.visibility_outlined),
-              label: const Text('Aperçu'),
-              style: OutlinedButton.styleFrom(
-                minimumSize: const Size(0, 50),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          // Générer & partager
-          Expanded(
-            flex: 2,
-            child: FilledButton.icon(
-              onPressed: enabled ? onGenerate : null,
-              icon: generating
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.white))
-                  : const Icon(Icons.send_outlined),
-              label: const Text('Générer'),
-              style: FilledButton.styleFrom(
-                minimumSize: const Size(0, 50),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
-                textStyle: const TextStyle(
-                    fontSize: 15, fontWeight: FontWeight.w600),
-              ),
-            ),
-          ),
-        ],
+      child: FilledButton(
+        onPressed: enabled ? onGenerate : null,
+        style: FilledButton.styleFrom(
+          minimumSize: const Size(double.infinity, 52),
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12)),
+          textStyle: const TextStyle(
+              fontSize: 15, fontWeight: FontWeight.w600),
+        ),
+        child: generating
+            ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                    strokeWidth: 2, color: Colors.white),
+              )
+            : const Text('Générer'),
       ),
     );
   }
@@ -907,8 +645,6 @@ class _EmptySessions extends StatelessWidget {
       child: Center(
         child: Column(
           children: [
-            const Icon(Icons.history, size: 48, color: Color(0xFF9CA3AF)),
-            const SizedBox(height: 8),
             const Text('Aucune session terminée pour ce projet.'),
             const SizedBox(height: 4),
             TextButton(

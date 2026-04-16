@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/providers/projects_provider.dart';
 import '../../core/theme/app_colors.dart';
@@ -285,10 +286,24 @@ class _ProjectCard extends StatelessWidget {
                           : AppColors.surfaceFill(context),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Icon(
-                  Icons.folder_outlined,
-                  size: 22,
-                  color: statusColor,
+                child: Builder(
+                  builder: (_) {
+                    final isActiveStatus = project.status == 'en_cours' ||
+                        project.status == 'en_attente';
+                    return SvgPicture.asset(
+                      isActiveStatus
+                          ? 'assets/icons/folder-actif.svg'
+                          : 'assets/icons/folder-inactif.svg',
+                      width: 24,
+                      height: 24,
+                      colorFilter: ColorFilter.mode(
+                        isActiveStatus
+                            ? const Color(0xFF305DA8)
+                            : const Color(0xFF9CA3AF),
+                        BlendMode.srcIn,
+                      ),
+                    );
+                  },
                 ),
               ),
               const SizedBox(width: 14),
