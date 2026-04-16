@@ -1,11 +1,14 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 import 'package:printing/printing.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/models/invoice_data.dart';
@@ -15,6 +18,7 @@ import '../../core/providers/clients_provider.dart';
 import '../../core/providers/profile_provider.dart';
 import '../../core/providers/projects_provider.dart';
 import '../../core/providers/sessions_provider.dart';
+import '../../core/providers/invoices_provider.dart';
 import '../../core/utils/invoice_number.dart';
 import '../../core/utils/invoice_pdf.dart';
 import '../../core/utils/paywall_gate.dart';
@@ -195,7 +199,7 @@ class _InvoiceScreenState extends ConsumerState<InvoiceScreen> {
     }
   }
 
-  // ─── Génération + partage + insert DB ────────────────────────────────────
+  // ─── Génération + insert DB ──────────────────────────────────────────────
 
   Future<void> _generateAndShare({
     required List<WorkSession> sessions,
@@ -245,15 +249,21 @@ class _InvoiceScreenState extends ConsumerState<InvoiceScreen> {
       final now = DateTime.now();
 
       // Upload PDF dans Supabase Storage
-      final storagePath = '$userId/$invoiceNumber.pdf';
-      await supabase.storage.from('invoices').uploadBinary(
-            storagePath,
-            bytes,
-            fileOptions: const FileOptions(
-              contentType: 'application/pdf',
-              upsert: true,
-            ),
-          );
+      String? storagePath;
+      try {
+        storagePath = '$userId/$invoiceNumber.pdf';
+        await supabase.storage.from('invoices').uploadBinary(
+              storagePath,
+              bytes,
+              fileOptions: const FileOptions(
+                contentType: 'application/pdf',
+                upsert: true,
+              ),
+            );
+      } catch (e) {
+        debugPrint('Upload Storage error: $e');
+        storagePath = null;
+      }
 
       // Insert en DB
       await supabase.from('invoices').insert({
@@ -268,16 +278,22 @@ class _InvoiceScreenState extends ConsumerState<InvoiceScreen> {
         'client_name': clientName,
       });
 
-      // Partage natif (email, AirDrop, Drive, etc.)
-      await Printing.sharePdf(
-        bytes: bytes,
-        filename: 'Facture_$invoiceNumber.pdf',
-      );
+      // Rafraîchir les providers Factures / PDFs
+      ref.invalidate(invoicesProvider);
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Facture $invoiceNumber générée ✓')),
-        );
+        ScaffoldMessenger.of(context)
+          ..clearSnackBars()
+          ..showSnackBar(
+            SnackBar(
+              content: Text('Facture $invoiceNumber générée'),
+              backgroundColor: const Color(0xFF16A34A),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+
+        // Bottom sheet partage
+        _showShareSheet(bytes, invoiceNumber, buyerEmail);
       }
     } catch (e) {
       if (mounted) {
@@ -288,6 +304,116 @@ class _InvoiceScreenState extends ConsumerState<InvoiceScreen> {
     } finally {
       if (mounted) setState(() => _generating = false);
     }
+  }
+
+  // ─── Bottom sheet partage ───────────────────────────────────────────────
+
+  void _showShareSheet(
+      Uint8List bytes, String invoiceNumber, String? buyerEmail) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE5E7EB),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              ListTile(
+                leading: const Icon(LucideIcons.mail,
+                    color: Color(0xFF2563EB)),
+                title: const Text('Envoyer par email'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _shareByEmail(bytes, invoiceNumber, buyerEmail);
+                },
+              ),
+              ListTile(
+                leading: const Icon(LucideIcons.messageCircle,
+                    color: Color(0xFF25D366)),
+                title: const Text('Envoyer par WhatsApp'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _shareWhatsApp(bytes, invoiceNumber);
+                },
+              ),
+              ListTile(
+                leading: const Icon(LucideIcons.share2,
+                    color: Color(0xFF6B7280)),
+                title: const Text('Autres options'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _shareGeneric(bytes, invoiceNumber);
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ─── Partage par email ──────────────────────────────────────────────────
+
+  Future<void> _shareByEmail(
+      Uint8List bytes, String invoiceNumber, String? buyerEmail) async {
+    final dir = await getTemporaryDirectory();
+    final file = File('${dir.path}/Facture_$invoiceNumber.pdf');
+    await file.writeAsBytes(bytes);
+
+    await Share.shareXFiles(
+      [XFile(file.path, mimeType: 'application/pdf')],
+      subject: 'Facture $invoiceNumber',
+      text: 'Bonjour,\n\n'
+          'Veuillez trouver ci-joint la facture $invoiceNumber.\n\n'
+          'Cordialement',
+    );
+    await ref.read(invoicesProvider.notifier).markAsSentByNumber(
+          invoiceNumber,
+          via: 'email',
+          to: buyerEmail,
+        );
+  }
+
+  // ─── Partage WhatsApp (via share sheet natif) ───────────────────────────
+
+  Future<void> _shareWhatsApp(Uint8List bytes, String invoiceNumber) async {
+    final dir = await getTemporaryDirectory();
+    final file = File('${dir.path}/Facture_$invoiceNumber.pdf');
+    await file.writeAsBytes(bytes);
+
+    await Share.shareXFiles(
+      [XFile(file.path, mimeType: 'application/pdf')],
+      text: 'Facture $invoiceNumber',
+    );
+    await ref.read(invoicesProvider.notifier).markAsSentByNumber(
+          invoiceNumber,
+          via: 'WhatsApp',
+        );
+  }
+
+  // ─── Partage générique ──────────────────────────────────────────────────
+
+  Future<void> _shareGeneric(Uint8List bytes, String invoiceNumber) async {
+    await Printing.sharePdf(
+      bytes: bytes,
+      filename: 'Facture_$invoiceNumber.pdf',
+    );
+    await ref.read(invoicesProvider.notifier).markAsSentByNumber(
+          invoiceNumber,
+          via: 'autre',
+        );
   }
 
   // ─── Build ────────────────────────────────────────────────────────────────
@@ -753,7 +879,7 @@ class _ActionBar extends StatelessWidget {
                       child: CircularProgressIndicator(
                           strokeWidth: 2, color: Colors.white))
                   : const Icon(Icons.send_outlined),
-              label: const Text('Générer & Partager'),
+              label: const Text('Générer'),
               style: FilledButton.styleFrom(
                 minimumSize: const Size(0, 50),
                 shape: RoundedRectangleBorder(

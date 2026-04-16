@@ -1,5 +1,6 @@
 import 'dart:async' show Timer;
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -234,10 +235,20 @@ class _ProjectSelectorButton extends ConsumerWidget {
                       : AppColors.surfaceFill(context),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: Icon(
-                  Icons.folder_outlined,
-                  color: hasSelection ? primary : AppColors.textTertiary(context),
-                  size: 20,
+                child: Center(
+                  child: SvgPicture.asset(
+                    hasSelection
+                        ? 'assets/icons/folder-actif.svg'
+                        : 'assets/icons/folder-inactif.svg',
+                    width: 24,
+                    height: 24,
+                    colorFilter: ColorFilter.mode(
+                      hasSelection
+                          ? const Color(0xFF305DA8)
+                          : const Color(0xFF9CA3AF),
+                      BlendMode.srcIn,
+                    ),
+                  ),
                 ),
               ),
               const SizedBox(width: 14),

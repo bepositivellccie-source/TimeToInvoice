@@ -7,12 +7,12 @@ import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:printing/printing.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/models/invoice.dart';
 import '../../core/providers/invoices_provider.dart';
 import '../../core/theme/app_colors.dart';
+import 'pdf_viewer_screen.dart';
 
 class InvoicesHistoryScreen extends ConsumerStatefulWidget {
   const InvoicesHistoryScreen({super.key});
@@ -727,10 +727,16 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
         final file =
             File('${dir.path}/${inv.invoiceNumber}.pdf');
         await file.writeAsBytes(bytes);
-        await Printing.layoutPdf(
-          onLayout: (_) async => bytes,
-          name: 'Facture_${inv.invoiceNumber}',
-        );
+        if (mounted) {
+          await Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => PdfViewerScreen(
+                filePath: file.path,
+                invoice: inv,
+              ),
+            ),
+          );
+        }
       } else {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -811,11 +817,13 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
         }
       }
 
-      // Mettre à jour le statut → envoyée
-      if (inv.status == 'draft' && mounted) {
-        await ref
-            .read(invoicesProvider.notifier)
-            .updateStatus(inv.id, 'sent');
+      // Historique d'envoi + statut → envoyée
+      if (mounted) {
+        await ref.read(invoicesProvider.notifier).markAsSentByNumber(
+              inv.invoiceNumber,
+              via: 'email',
+              to: inv.clientEmail,
+            );
       }
 
       if (mounted) {

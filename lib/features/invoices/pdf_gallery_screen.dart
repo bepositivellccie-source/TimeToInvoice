@@ -5,11 +5,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:printing/printing.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/models/invoice.dart';
 import '../../core/providers/invoices_provider.dart';
+import 'pdf_viewer_screen.dart';
 
 class PdfGalleryScreen extends ConsumerStatefulWidget {
   const PdfGalleryScreen({super.key});
@@ -21,6 +21,7 @@ class PdfGalleryScreen extends ConsumerStatefulWidget {
 class _PdfGalleryScreenState extends ConsumerState<PdfGalleryScreen> {
   int _columns = 1;
   String _searchQuery = '';
+  bool _loadingPdf = false;
   final _searchCtrl = TextEditingController();
 
   @override
@@ -41,13 +42,10 @@ class _PdfGalleryScreenState extends ConsumerState<PdfGalleryScreen> {
   }
 
   Future<void> _openPdf(Invoice inv) async {
-    if (inv.pdfPath == null) return;
+    if (inv.pdfPath == null || _loadingPdf) return;
 
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const Center(child: CircularProgressIndicator()),
-    );
+    setState(() => _loadingPdf = true);
+    final messenger = ScaffoldMessenger.of(context);
 
     try {
       final bytes = await Supabase.instance.client.storage
@@ -57,16 +55,21 @@ class _PdfGalleryScreenState extends ConsumerState<PdfGalleryScreen> {
       final file = File('${dir.path}/${inv.invoiceNumber}.pdf');
       await file.writeAsBytes(bytes);
 
-      if (mounted) Navigator.pop(context); // dismiss loader
+      if (!mounted) return;
+      setState(() => _loadingPdf = false);
 
-      await Printing.layoutPdf(
-        onLayout: (_) async => bytes,
-        name: 'Facture_${inv.invoiceNumber}',
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => PdfViewerScreen(
+            filePath: file.path,
+            invoice: inv,
+          ),
+        ),
       );
     } catch (e) {
-      if (mounted) Navigator.pop(context); // dismiss loader
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        setState(() => _loadingPdf = false);
+        messenger.showSnackBar(
           SnackBar(content: Text('Erreur : $e')),
         );
       }
@@ -114,8 +117,10 @@ class _PdfGalleryScreenState extends ConsumerState<PdfGalleryScreen> {
           ),
         ],
       ),
-      body: Column(
+      body: Stack(
         children: [
+          Column(
+            children: [
           // ── Barre de recherche ──────────────────────────────────
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
@@ -169,6 +174,15 @@ class _PdfGalleryScreenState extends ConsumerState<PdfGalleryScreen> {
               },
             ),
           ),
+            ],
+          ),
+          if (_loadingPdf)
+            const Positioned.fill(
+              child: ColoredBox(
+                color: Color(0x80000000),
+                child: Center(child: CircularProgressIndicator()),
+              ),
+            ),
         ],
       ),
     );
@@ -305,7 +319,7 @@ class _PdfGridCard extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(14),
         child: Padding(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(6),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -325,7 +339,7 @@ class _PdfGridCard extends StatelessWidget {
               Text(
                 invoice.clientName ?? 'Client',
                 style: const TextStyle(
-                    fontSize: 13, fontWeight: FontWeight.w600),
+                    fontSize: 11, fontWeight: FontWeight.w600),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 textAlign: TextAlign.center,
@@ -335,7 +349,7 @@ class _PdfGridCard extends StatelessWidget {
               Text(
                 euroFmt.format(invoice.totalAmount),
                 style: const TextStyle(
-                    fontSize: 13,
+                    fontSize: 11,
                     fontWeight: FontWeight.w700,
                     color: Color(0xFF305DA8)),
                 textAlign: TextAlign.center,

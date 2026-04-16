@@ -9,6 +9,9 @@ class Invoice {
   final String? pdfPath;
   final DateTime? issuedAt;
   final DateTime? dueAt;
+  final DateTime? sentAt;
+  final String? sentVia; // 'email' | 'WhatsApp' | 'autre'
+  final String? sentTo;
 
   // Joined from clients table OR stored denormalized
   final String? clientName;
@@ -25,6 +28,9 @@ class Invoice {
     this.pdfPath,
     this.issuedAt,
     this.dueAt,
+    this.sentAt,
+    this.sentVia,
+    this.sentTo,
     this.clientName,
     this.clientEmail,
   });
@@ -73,6 +79,11 @@ class Invoice {
       dueAt: json['due_at'] != null
           ? DateTime.parse(json['due_at'] as String)
           : null,
+      sentAt: json['sent_at'] != null
+          ? DateTime.parse(json['sent_at'] as String)
+          : null,
+      sentVia: json['sent_via'] as String?,
+      sentTo: json['sent_to'] as String?,
       clientName: json['client_name'] as String? ?? joinedName,
       clientEmail: joinedEmail,
     );

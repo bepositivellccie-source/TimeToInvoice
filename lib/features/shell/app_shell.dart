@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/providers/session_bar_provider.dart';
@@ -16,7 +17,7 @@ class AppShell extends ConsumerWidget {
     final sessionBar = ref.watch(sessionBarProvider);
     final currentIdx = navigationShell.currentIndex;
 
-    // Branches : 0=Projets, 1=Clients, 2=Chrono (FAB), 3=Factures, 4=PDFs
+    // Branches : 0=Projets, 1=Clients, 2=Chrono, 3=Factures, 4=PDFs
 
     return Scaffold(
       body: Column(
@@ -42,25 +43,8 @@ class AppShell extends ConsumerWidget {
         ],
       ),
 
-      // ── FAB Chrono central ────────────────────────────────────────
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => navigationShell.goBranch(2,
-            initialLocation: currentIdx == 2),
-        backgroundColor: _brand,
-        elevation: 4,
-        shape: const CircleBorder(),
-        child: Icon(
-          LucideIcons.timer,
-          color: currentIdx == 2 ? Colors.white : Colors.white.withAlpha(200),
-          size: 28,
-        ),
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
-
       // ── Bottom bar ────────────────────────────────────────────────
       bottomNavigationBar: BottomAppBar(
-        shape: const CircularNotchedRectangle(),
-        notchMargin: 8,
         padding: EdgeInsets.zero,
         height: 64,
         child: Row(
@@ -68,8 +52,8 @@ class AppShell extends ConsumerWidget {
           children: [
             // ── Projets (branch 0) ──
             _NavItem(
-              iconOutline: LucideIcons.folder,
-              iconFilled: LucideIcons.folderOpen,
+              svgInactive: 'assets/icons/folder-inactif.svg',
+              svgActive: 'assets/icons/folder-actif.svg',
               label: 'Projets',
               isSelected: currentIdx == 0,
               onTap: () => navigationShell.goBranch(0,
@@ -78,21 +62,28 @@ class AppShell extends ConsumerWidget {
 
             // ── Clients (branch 1) ──
             _NavItem(
-              iconOutline: LucideIcons.users,
-              iconFilled: LucideIcons.users2,
+              svgInactive: 'assets/icons/clients-inactif.svg',
+              svgActive: 'assets/icons/clients-actif.svg',
               label: 'Clients',
               isSelected: currentIdx == 1,
               onTap: () => navigationShell.goBranch(1,
                   initialLocation: currentIdx == 1),
             ),
 
-            // ── Espace vide pour le FAB ──
-            const SizedBox(width: 60),
+            // ── Chrono (branch 2) — onglet normal ──
+            _NavItem(
+              svgInactive: 'assets/icons/chrono-inactif.svg',
+              svgActive: 'assets/icons/chrono-actif.svg',
+              label: 'Chrono',
+              isSelected: currentIdx == 2,
+              onTap: () => navigationShell.goBranch(2,
+                  initialLocation: currentIdx == 2),
+            ),
 
             // ── Factures (branch 3) ──
             _NavItem(
-              iconOutline: LucideIcons.fileText,
-              iconFilled: LucideIcons.receipt,
+              svgInactive: 'assets/icons/Facture-inactif.svg',
+              svgActive: 'assets/icons/Facture-actif.svg',
               label: 'Factures',
               isSelected: currentIdx == 3,
               onTap: () => navigationShell.goBranch(3,
@@ -101,8 +92,8 @@ class AppShell extends ConsumerWidget {
 
             // ── PDFs (branch 4) ──
             _NavItem(
-              iconOutline: LucideIcons.files,
-              iconFilled: LucideIcons.fileStack,
+              svgInactive: 'assets/icons/pdf-inactifs.svg',
+              svgActive: 'assets/icons/pdf.actif.svg',
               label: 'PDFs',
               isSelected: currentIdx == 4,
               onTap: () => navigationShell.goBranch(4,
@@ -257,18 +248,18 @@ class _SessionBarState extends State<_SessionBar>
   }
 }
 
-// ─── Navigation item ───────────────────────────────────────────────────────
+// ─── Navigation item (SVG custom) ─────────────────────────────────────────
 
 class _NavItem extends StatefulWidget {
-  final IconData iconOutline;
-  final IconData iconFilled;
+  final String svgInactive;
+  final String svgActive;
   final String label;
   final bool isSelected;
   final VoidCallback onTap;
 
   const _NavItem({
-    required this.iconOutline,
-    required this.iconFilled,
+    required this.svgInactive,
+    required this.svgActive,
     required this.label,
     required this.isSelected,
     required this.onTap,
@@ -286,8 +277,8 @@ class _NavItemState extends State<_NavItem> {
 
   @override
   Widget build(BuildContext context) {
-    final icon = widget.isSelected ? widget.iconFilled : widget.iconOutline;
     final color = widget.isSelected ? _active : _inactive;
+    final svgPath = widget.isSelected ? widget.svgActive : widget.svgInactive;
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
@@ -310,10 +301,11 @@ class _NavItemState extends State<_NavItem> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              icon,
-              size: 22,
-              color: color,
+            SvgPicture.asset(
+              svgPath,
+              width: 22,
+              height: 22,
+              colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
             ),
             const SizedBox(height: 3),
             Text(

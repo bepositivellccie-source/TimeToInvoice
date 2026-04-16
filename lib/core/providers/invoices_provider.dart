@@ -26,6 +26,27 @@ class InvoicesNotifier extends AsyncNotifier<List<Invoice>> {
     ref.invalidateSelf();
   }
 
+  Future<void> markAsSentByNumber(
+    String invoiceNumber, {
+    required String via,
+    String? to,
+  }) async {
+    final supabase = ref.read(supabaseClientProvider);
+    final payload = <String, dynamic>{
+      'sent_at': DateTime.now().toUtc().toIso8601String(),
+      'sent_via': via,
+      'status': 'sent',
+    };
+    if (to != null && to.isNotEmpty) {
+      payload['sent_to'] = to;
+    }
+    await supabase
+        .from('invoices')
+        .update(payload)
+        .eq('invoice_number', invoiceNumber);
+    ref.invalidateSelf();
+  }
+
   Future<void> delete(String id) async {
     final supabase = ref.read(supabaseClientProvider);
     await supabase.from('invoices').delete().eq('id', id);
