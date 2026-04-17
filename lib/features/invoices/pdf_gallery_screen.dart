@@ -530,6 +530,7 @@ class _PdfListTile extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.all(14),
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // ── Icone PDF ──
               SizedBox(
@@ -551,39 +552,59 @@ class _PdfListTile extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      invoice.clientName ?? 'Client',
-                      style: const TextStyle(
-                          fontSize: 15, fontWeight: FontWeight.w600),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                    // Ligne 1 : nom + montant + chevron
+                    Row(
+                      children: [
+                        Text(
+                          invoice.clientName ?? 'Client',
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF111827),
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const Spacer(),
+                        Text(
+                          euroFmt.format(invoice.totalAmount),
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF111827),
+                          ),
+                        ),
+                        const Icon(LucideIcons.chevronRight,
+                            size: 18, color: Color(0xFF9CA3AF)),
+                      ],
                     ),
-                    const SizedBox(height: 4),
-                    _StatusBadge(status: invoice.status),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 2),
+                    // Ligne 2 : date
                     Text(
                       dateFmt.format(invoice.createdAt.toLocal()),
                       style: const TextStyle(
-                          fontSize: 12, color: Color(0xFF6B7280)),
+                        fontSize: 13,
+                        color: Color(0xFF6B7280),
+                      ),
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'N\u00B0 ${invoice.invoiceNumber}',
-                      style: const TextStyle(
-                          fontSize: 11, color: Color(0xFF9CA3AF)),
+                    const SizedBox(height: 4),
+                    // Ligne 3 : N° + Spacer + badge statut (aligné droite)
+                    Row(
+                      children: [
+                        Text(
+                          'N\u00B0 ${invoice.invoiceNumber}',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Color(0xFF9CA3AF),
+                          ),
+                        ),
+                        const Spacer(),
+                        _StatusBadge(status: invoice.status),
+                      ],
                     ),
                   ],
                 ),
               ),
-              // ── Montant ──
-              Text(
-                euroFmt.format(invoice.totalAmount),
-                style: const TextStyle(
-                    fontSize: 15, fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(width: 4),
-              const Icon(LucideIcons.chevronRight,
-                  size: 16, color: Color(0xFF9CA3AF)),
             ],
           ),
         ),
