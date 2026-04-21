@@ -713,17 +713,17 @@ class _InvoiceTileState extends State<_InvoiceTile> {
                                 ),
                               ),
                               const SizedBox(height: 4),
-                              // Ligne 3 : N° + badge statut (+ sentVia)
+                              // Ligne 3 : N° + badge statut + icône sentVia
                               Row(
                                 children: [
                                   Text(
                                     'N° ${inv.invoiceNumber}',
                                     style: const TextStyle(
-                                      fontSize: 12,
+                                      fontSize: 11,
                                       color: Color(0xFF9CA3AF),
                                     ),
                                   ),
-                                  const SizedBox(width: 8),
+                                  const Spacer(),
                                   _StatusBadge(invoice: inv),
                                   if (inv.sentVia == 'email' ||
                                       inv.sentVia == 'whatsapp') ...[
@@ -738,6 +738,21 @@ class _InvoiceTileState extends State<_InvoiceTile> {
                                   ],
                                 ],
                               ),
+                              // Ligne 4 (overdue only) : date d'échéance alignée à droite
+                              if (_isOverdue(inv) && inv.dueAt != null) ...[
+                                const SizedBox(height: 2),
+                                Align(
+                                  alignment: Alignment.centerRight,
+                                  child: Text(
+                                    'Éch. ${DateFormat('d MMM', 'fr_FR').format(inv.dueAt!.toLocal())}',
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      color: Color(0xFFEF4444),
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ],
                           ),
                         ),

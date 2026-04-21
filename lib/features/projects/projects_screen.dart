@@ -8,6 +8,7 @@ import '../../core/providers/projects_provider.dart';
 import '../../core/providers/clients_provider.dart';
 import '../../core/providers/sessions_provider.dart';
 import '../../core/providers/project_billing_status_provider.dart';
+import '../../core/providers/supabase_provider.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/project_billing_badge.dart';
 import '../clients/client_detail_screen.dart';
@@ -393,7 +394,6 @@ class _ProjectColumn extends ConsumerWidget {
           index: i,
           project: projects[i],
           clientName: clientNames[projects[i].id] ?? '',
-          canDelete: status == 'termine',
           statusColor: color,
         );
       },
@@ -407,7 +407,6 @@ class _ProjectCard extends ConsumerStatefulWidget {
   final int index;
   final Project project;
   final String clientName;
-  final bool canDelete;
   final Color statusColor;
 
   const _ProjectCard({
@@ -415,7 +414,6 @@ class _ProjectCard extends ConsumerStatefulWidget {
     required this.index,
     required this.project,
     required this.clientName,
-    required this.canDelete,
     required this.statusColor,
   });
 
@@ -437,12 +435,34 @@ class _ProjectCardState extends ConsumerState<_ProjectCard> {
   Future<void> _confirmDelete() async {
     if (_dialogShown) return;
     _dialogShown = true;
+
+    // Vue Postgres : si le projet a déjà des factures (statut ≠ unbilled), on
+    // avertit l'utilisateur que les factures ne seront PAS supprimées (ON DELETE
+    // SET NULL côté Supabase).
+    final billing = ref
+        .read(projectBillingStatusByIdProvider(widget.project.id))
+        .valueOrNull;
+    final hasInvoices =
+        billing != null && billing.billingStatus != 'unbilled';
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Supprimer ce projet ?'),
-        content: Text(
-            '${widget.project.name} et toutes ses sessions seront supprimés.'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Toutes les sessions associées seront supprimées.'),
+            if (hasInvoices) ...[
+              const SizedBox(height: 8),
+              const Text(
+                'Les factures liées ne seront PAS supprimées.',
+                style: TextStyle(fontWeight: FontWeight.w600),
+              ),
+            ],
+          ],
+        ),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
@@ -459,8 +479,25 @@ class _ProjectCardState extends ConsumerState<_ProjectCard> {
     if (!mounted) return;
     _dialogShown = false;
     if (confirmed == true) {
-      await ref.read(projectsProvider.notifier).delete(
-          id: widget.project.id, clientId: widget.project.clientId);
+      final messenger = ScaffoldMessenger.of(context);
+      final supabase = ref.read(supabaseClientProvider);
+      try {
+        await supabase
+            .from('sessions')
+            .delete()
+            .eq('project_id', widget.project.id);
+        await supabase
+            .from('projects')
+            .delete()
+            .eq('id', widget.project.id);
+        ref.invalidate(projectsProvider);
+        ref.invalidate(projectBillingStatusProvider);
+      } catch (e) {
+        messenger.showSnackBar(
+          SnackBar(content: Text('Erreur suppression : $e')),
+        );
+        if (mounted) setState(() => _swipeOffset = 0);
+      }
     } else {
       setState(() => _swipeOffset = 0);
     }
@@ -665,58 +702,55 @@ class _ProjectCardState extends ConsumerState<_ProjectCard> {
       ),
     );
 
-    // ── Swipe delete (colonne Terminé uniquement) ────────────────
-    Widget child;
-    if (widget.canDelete) {
-      final deleteOpacity = (_swipeOffset.abs() / 80).clamp(0.0, 1.0);
-      child = ClipRRect(
-        borderRadius: BorderRadius.circular(16),
-        child: Stack(
-          children: [
-            if (_swipeOffset < 0)
-              Positioned.fill(
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFDC2626),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  alignment: Alignment.centerRight,
-                  padding: const EdgeInsets.only(right: 24),
-                  child: Opacity(
-                    opacity: deleteOpacity,
-                    child: const Icon(Icons.delete_outline,
-                        color: Colors.white, size: 26),
-                  ),
+    // ── Swipe delete (tous statuts Kanban) ────────────────────────
+    // Les factures liées restent préservées côté Postgres
+    // (invoices.project_id ON DELETE SET NULL).
+    final deleteOpacity = (_swipeOffset.abs() / 80).clamp(0.0, 1.0);
+    final child = ClipRRect(
+      borderRadius: BorderRadius.circular(16),
+      child: Stack(
+        children: [
+          if (_swipeOffset < 0)
+            Positioned.fill(
+              child: Container(
+                decoration: BoxDecoration(
+                  color: const Color(0xFFDC2626),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                alignment: Alignment.centerRight,
+                padding: const EdgeInsets.only(right: 24),
+                child: Opacity(
+                  opacity: deleteOpacity,
+                  child: const Icon(Icons.delete_outline,
+                      color: Colors.white, size: 26),
                 ),
               ),
-            AnimatedContainer(
-              duration: Duration(milliseconds: _swipeOffset == 0 ? 200 : 0),
-              curve: Curves.easeOut,
-              transform: Matrix4.translationValues(_swipeOffset, 0, 0),
-              child: GestureDetector(
-                onHorizontalDragUpdate: (d) {
-                  setState(() {
-                    _swipeOffset = (_swipeOffset + d.delta.dx)
-                        .clamp(-screenWidth, 0.0);
-                  });
-                },
-                onHorizontalDragEnd: (d) {
-                  final velocity = d.primaryVelocity ?? 0;
-                  if (_swipeOffset < -screenWidth * 0.30 || velocity < -800) {
-                    _confirmDelete();
-                  } else {
-                    setState(() => _swipeOffset = 0);
-                  }
-                },
-                child: cardContent,
-              ),
             ),
-          ],
-        ),
-      );
-    } else {
-      child = cardContent;
-    }
+          AnimatedContainer(
+            duration: Duration(milliseconds: _swipeOffset == 0 ? 200 : 0),
+            curve: Curves.easeOut,
+            transform: Matrix4.translationValues(_swipeOffset, 0, 0),
+            child: GestureDetector(
+              onHorizontalDragUpdate: (d) {
+                setState(() {
+                  _swipeOffset = (_swipeOffset + d.delta.dx)
+                      .clamp(-screenWidth, 0.0);
+                });
+              },
+              onHorizontalDragEnd: (d) {
+                final velocity = d.primaryVelocity ?? 0;
+                if (_swipeOffset < -screenWidth * 0.30 || velocity < -800) {
+                  _confirmDelete();
+                } else {
+                  setState(() => _swipeOffset = 0);
+                }
+              },
+              child: cardContent,
+            ),
+          ),
+        ],
+      ),
+    );
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),

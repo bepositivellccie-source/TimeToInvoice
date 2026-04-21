@@ -59,6 +59,16 @@ class PdfViewerScreen extends ConsumerWidget {
     return DateFormat('dd/MM/yyyy à HH:mm', 'fr_FR').format(d.toLocal());
   }
 
+  /// Libellé d'envoi affiché à l'utilisateur. Le canal stocké en base
+  /// (sent_via) reste en anglais ; seul l'affichage est francisé.
+  String _sentLabel(String? sentVia) {
+    return switch (sentVia) {
+      'email' => 'Envoyée par email',
+      'whatsapp' => 'Envoyée par WhatsApp',
+      _ => 'Partagée',
+    };
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final inv = _currentInvoice(ref);
@@ -97,8 +107,7 @@ class PdfViewerScreen extends ConsumerWidget {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Envoyée${inv.sentVia != null ? ' par ${inv.sentVia}' : ''} '
-                      'le ${_formatDate(inv.sentAt!)}'
+                      '${_sentLabel(inv.sentVia)} le ${_formatDate(inv.sentAt!)}'
                       '${inv.sentTo != null ? ' · ${inv.sentTo}' : ''}',
                       style: const TextStyle(
                           fontSize: 13, color: Color(0xFF6B7280)),

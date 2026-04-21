@@ -588,13 +588,13 @@ class _PdfListTile extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 4),
-                    // Ligne 3 : N° + Spacer + badge statut (aligné droite)
+                    // Ligne 3 : N° + Spacer + badge statut
                     Row(
                       children: [
                         Text(
                           'N\u00B0 ${invoice.invoiceNumber}',
                           style: const TextStyle(
-                            fontSize: 12,
+                            fontSize: 11,
                             color: Color(0xFF9CA3AF),
                           ),
                         ),
@@ -602,6 +602,21 @@ class _PdfListTile extends StatelessWidget {
                         _StatusBadge(status: invoice.status),
                       ],
                     ),
+                    // Ligne 4 (overdue only) : date d'échéance alignée à droite
+                    if (_isOverdue(invoice) && invoice.dueAt != null) ...[
+                      const SizedBox(height: 2),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: Text(
+                          '\u00C9ch. ${DateFormat('d MMM', 'fr_FR').format(invoice.dueAt!.toLocal())}',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: Color(0xFFEF4444),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -635,25 +650,26 @@ class _PdfGridCard extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(14),
         child: Padding(
-          padding: const EdgeInsets.all(6),
+          padding: const EdgeInsets.all(4),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
             children: [
               // ── Icone PDF ──
               SizedBox(
-                width: 48,
-                height: 48,
+                width: 44,
+                height: 44,
                 child: Center(
                   child: SvgPicture.asset(
                     iconCfg.asset,
-                    width: 32,
-                    height: 32,
+                    width: 28,
+                    height: 28,
                     colorFilter:
                         ColorFilter.mode(iconCfg.color, BlendMode.srcIn),
                   ),
                 ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 4),
               // ── Nom client ──
               Text(
                 invoice.clientName ?? 'Client',
@@ -663,10 +679,10 @@ class _PdfGridCard extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 textAlign: TextAlign.center,
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: 2),
               // ── Badge statut ──
               _StatusBadge(status: invoice.status),
-              const SizedBox(height: 4),
+              const SizedBox(height: 2),
               // ── Montant ──
               Text(
                 euroFmt.format(invoice.totalAmount),
@@ -676,12 +692,12 @@ class _PdfGridCard extends StatelessWidget {
                     color: Color(0xFF305DA8)),
                 textAlign: TextAlign.center,
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: 2),
               // ── Date ──
               Text(
                 dateFmt.format(invoice.createdAt.toLocal()),
                 style: const TextStyle(
-                    fontSize: 11, color: Color(0xFF9CA3AF)),
+                    fontSize: 10, color: Color(0xFF9CA3AF)),
                 textAlign: TextAlign.center,
               ),
             ],
