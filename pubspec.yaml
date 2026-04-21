@@ -84,7 +84,7 @@ flutter:
 
   assets:
     - assets/ChronoFacture.png
-    - assets/Chrono.png
+    - assets/ChronoFacture_Officiel_bleu_512px_NoMarge.png
     - assets/entreprise.svg
     - assets/client.svg
     - assets/projet.svg
@@ -124,7 +124,7 @@ flutter:
 flutter_launcher_icons:
   android: true
   ios: true
-  image_path: "assets/ChronoFacture_LAUNCH.png"
-  adaptive_icon_background: "#FFFFFF"
-  adaptive_icon_foreground: "assets/ChronoFacture_LAUNCH.png"
+  image_path: "assets/ChronoFacture_Officiel_blanc_1024px-02.png"
+  adaptive_icon_background: "#305DA8"
+  adaptive_icon_foreground: "assets/ChronoFacture_Officiel_blanc_1024px-02.png"
   remove_alpha_ios: true

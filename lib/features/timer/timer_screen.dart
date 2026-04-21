@@ -27,21 +27,25 @@ class TimerScreen extends ConsumerWidget {
           child: Column(
             children: [
               // ── Top bar : paramètres ──────────────────────────────────
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  IconButton(
-                    icon: Icon(LucideIcons.settings,
-                        color: AppColors.textSecondary(context), size: 22),
-                    tooltip: 'Paramètres',
-                    onPressed: () => context.push('/settings'),
-                    visualDensity: VisualDensity.compact,
-                  ),
-                ],
+              SizedBox(
+                height: 32,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    IconButton(
+                      icon: Icon(LucideIcons.settings,
+                          color: AppColors.textSecondary(context), size: 22),
+                      tooltip: 'Paramètres',
+                      onPressed: () => context.push('/settings'),
+                      visualDensity: VisualDensity.compact,
+                      padding: EdgeInsets.zero,
+                    ),
+                  ],
+                ),
               ),
 
               // ── Logo centré ───────────────────────────────────────────
-              Image.asset('assets/Chrono.png', height: 72),
+              Image.asset('assets/ChronoFacture_Officiel_bleu_512px_NoMarge.png', height: 60),
               const SizedBox(height: 8),
               RichText(
                 text: TextSpan(
