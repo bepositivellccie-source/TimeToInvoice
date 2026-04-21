@@ -446,7 +446,7 @@ class _StatusBadge extends StatelessWidget {
     final config = switch (status) {
       'paid' => (label: 'Payée', color: const Color(0xFF22C55E)),
       'sent' => (label: 'Envoyée', color: const Color(0xFF305DA8)),
-      'draft' => (label: 'Brouillon', color: const Color(0xFF9CA3AF)),
+      'draft' => (label: 'À envoyer', color: const Color(0xFF9CA3AF)),
       _ => null,
     };
     if (config == null) return const SizedBox.shrink();

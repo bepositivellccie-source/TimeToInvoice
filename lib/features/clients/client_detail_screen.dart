@@ -8,11 +8,15 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:intl/intl.dart';
 import '../../core/models/client.dart';
+import '../../core/models/invoice.dart';
 import '../../core/models/project.dart';
 import '../../core/providers/clients_provider.dart';
+import '../../core/providers/invoices_provider.dart';
 import '../../core/providers/profile_provider.dart';
 import '../../core/providers/projects_provider.dart';
+import '../../core/providers/project_billing_status_provider.dart';
 import '../../core/providers/sessions_provider.dart';
+import '../../core/widgets/project_billing_badge.dart';
 
 // ─── Screen ──────────────────────────────────────────────────────────────────
 
@@ -364,6 +368,10 @@ class _ClientDetailScreenState extends ConsumerState<ClientDetailScreen> {
                     projectsAsync: projectsAsync,
                     onAddProject: () => _openProjectForm(context, ref),
                   ),
+
+                  // 6 — Section FACTURES (lue depuis invoicesProvider)
+                  const SizedBox(height: 20),
+                  _InvoicesCard(clientId: widget.clientId),
 
                   // ── Membre depuis ─────────────────────────────
                   Padding(
@@ -971,6 +979,151 @@ class _ProjectsCard extends StatelessWidget {
   }
 }
 
+// ─── Section FACTURES (white card) ─────────────────────────────────────────
+
+class _InvoicesCard extends ConsumerWidget {
+  final String clientId;
+
+  const _InvoicesCard({required this.clientId});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final invoicesAsync = ref.watch(invoicesByClientProvider(clientId));
+
+    return _WhiteCard(
+      title: 'FACTURES',
+      trailing: GestureDetector(
+        onTap: () => context.push('/invoices'),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Tout voir',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+            ),
+            const SizedBox(width: 2),
+            Icon(LucideIcons.chevronRight,
+                size: 16, color: Theme.of(context).colorScheme.primary),
+          ],
+        ),
+      ),
+      child: invoicesAsync.when(
+        loading: () => const Padding(
+          padding: EdgeInsets.all(24),
+          child: Center(child: CircularProgressIndicator()),
+        ),
+        error: (e, _) => Padding(
+          padding: const EdgeInsets.all(16),
+          child: Center(child: Text('Erreur: $e')),
+        ),
+        data: (invoices) {
+          if (invoices.isEmpty) {
+            return const Padding(
+              padding: EdgeInsets.fromLTRB(16, 8, 16, 16),
+              child: Text(
+                'Aucune facture pour ce client.',
+                style: TextStyle(fontSize: 13, color: Color(0xFF6B7280)),
+              ),
+            );
+          }
+          final visible = invoices.take(5).toList();
+          return Column(
+            children: [
+              for (int i = 0; i < visible.length; i++) ...[
+                _ClientInvoiceRow(invoice: visible[i]),
+                if (i < visible.length - 1)
+                  const Divider(height: 1, indent: 16, endIndent: 16),
+              ],
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+// ─── Invoice row (compact, in client detail) ───────────────────────────────
+
+class _ClientInvoiceRow extends StatelessWidget {
+  final Invoice invoice;
+
+  const _ClientInvoiceRow({required this.invoice});
+
+  @override
+  Widget build(BuildContext context) {
+    final dateFmt = DateFormat('dd/MM/yyyy', 'fr_FR');
+    final euroFmt = NumberFormat.currency(
+        locale: 'fr_FR', symbol: '€', decimalDigits: 2);
+
+    final statusColor = switch (invoice.isOverdue
+        ? 'overdue'
+        : invoice.status) {
+      'overdue' => const Color(0xFFEF4444),
+      'paid' => const Color(0xFF22C55E),
+      'sent' => const Color(0xFF305DA8),
+      'draft' => const Color(0xFF9CA3AF),
+      _ => const Color(0xFF6B7280),
+    };
+
+    return InkWell(
+      onTap: () => context.push('/invoices'),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Row(
+          children: [
+            Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(
+                color: statusColor,
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'N° ${invoice.invoiceNumber}',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '${dateFmt.format(invoice.createdAt.toLocal())} · ${invoice.displayStatus}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: statusColor,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Text(
+              euroFmt.format(invoice.totalAmount),
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(width: 4),
+            const Icon(LucideIcons.chevronRight,
+                size: 16, color: Color(0xFFD1D5DB)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 // ─── White card wrapper (Revolut-style) ────────────────────────────────────
 
 class _WhiteCard extends StatelessWidget {
@@ -1053,6 +1206,8 @@ class _ProjectRow extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final totals = ref.watch(projectsTotalSecondsProvider).valueOrNull ?? {};
     final totalSecs = totals[project.id] ?? 0;
+    final billing =
+        ref.watch(projectBillingStatusByIdProvider(project.id)).valueOrNull;
 
     const statusColors = {
       'en_cours': Color(0xFF659711),
@@ -1096,13 +1251,21 @@ class _ProjectRow extends ConsumerWidget {
                     ),
                   ),
                   const SizedBox(height: 2),
-                  Text(
-                    statusLabel,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: statusColor,
-                      fontWeight: FontWeight.w500,
-                    ),
+                  Row(
+                    children: [
+                      Text(
+                        statusLabel,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: statusColor,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      if (billing != null) ...[
+                        const SizedBox(width: 8),
+                        ProjectBillingBadge(status: billing.billingStatus),
+                      ],
+                    ],
                   ),
                 ],
               ),

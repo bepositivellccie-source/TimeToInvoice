@@ -17,6 +17,7 @@ import '../../core/providers/profile_provider.dart';
 import '../../core/providers/projects_provider.dart';
 import '../../core/providers/sessions_provider.dart';
 import '../../core/providers/invoices_provider.dart';
+import '../../core/providers/project_billing_status_provider.dart';
 import '../../core/utils/invoice_number.dart';
 import '../../core/utils/invoice_pdf.dart';
 import '../../core/utils/paywall_gate.dart';
@@ -183,6 +184,7 @@ class _InvoiceScreenState extends ConsumerState<InvoiceScreen> {
           .insert({
             'user_id': userId,
             'client_id': clientId,
+            'project_id': widget.projectId,
             'invoice_number': invoiceNumber,
             'total_amount': data.totalTTC,
             'status': 'draft',
@@ -196,6 +198,18 @@ class _InvoiceScreenState extends ConsumerState<InvoiceScreen> {
 
       final invoice = Invoice.fromJson(inserted);
 
+      // Persistance des sessions facturées (liaison invoice_sessions)
+      final invoiceId = inserted['id'] as String;
+      final sessionRows = _selected
+          .map((sessionId) => {
+                'invoice_id': invoiceId,
+                'session_id': sessionId,
+              })
+          .toList();
+      if (sessionRows.isNotEmpty) {
+        await supabase.from('invoice_sessions').insert(sessionRows);
+      }
+
       if (!mounted) return;
 
       // Navigation vers le viewer embarqué
@@ -208,8 +222,11 @@ class _InvoiceScreenState extends ConsumerState<InvoiceScreen> {
         ),
       );
 
-      // Au retour → rafraîchir la liste
+      // Au retour → rafraîchir listes + statut facturation
       ref.invalidate(invoicesProvider);
+      ref.invalidate(unbilledSessionsByProjectProvider(widget.projectId));
+      ref.invalidate(sessionsByProjectProvider(widget.projectId));
+      ref.invalidate(projectBillingStatusProvider);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -227,7 +244,7 @@ class _InvoiceScreenState extends ConsumerState<InvoiceScreen> {
   Widget build(BuildContext context) {
     final profileAsync = ref.watch(profileProvider);
     final sessionsAsync =
-        ref.watch(sessionsByProjectProvider(widget.projectId));
+        ref.watch(unbilledSessionsByProjectProvider(widget.projectId));
     final project = ref.watch(projectsProvider).valueOrNull
         ?.where((p) => p.id == widget.projectId)
         .firstOrNull;

@@ -3,8 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/providers/projects_provider.dart';
+import '../../core/providers/project_billing_status_provider.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/providers/sessions_provider.dart';
+import '../../core/widgets/project_billing_badge.dart';
 
 class ProjectSelectScreen extends ConsumerStatefulWidget {
   const ProjectSelectScreen({super.key});
@@ -229,7 +231,7 @@ class _StatusChip extends StatelessWidget {
 
 // ─── Card projet ──────────────────────────────────────────────────────────────
 
-class _ProjectCard extends StatelessWidget {
+class _ProjectCard extends ConsumerWidget {
   final TimerEntry entry;
   final int totalSeconds;
   final VoidCallback onTap;
@@ -248,8 +250,10 @@ class _ProjectCard extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final project = entry.project;
+    final billing =
+        ref.watch(projectBillingStatusByIdProvider(project.id)).valueOrNull;
     final isActive = project.isActive;
     final statusColor = project.status == 'en_attente'
         ? const Color(0xFFF59E0B)
@@ -319,10 +323,23 @@ class _ProjectCard extends StatelessWidget {
                           fontWeight: FontWeight.w700, fontSize: 15),
                     ),
                     const SizedBox(height: 2),
-                    Text(
-                      entry.clientName,
-                      style: TextStyle(
-                          fontSize: 12, color: AppColors.textSecondary(context)),
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            entry.clientName,
+                            style: TextStyle(
+                                fontSize: 12,
+                                color: AppColors.textSecondary(context)),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (billing != null) ...[
+                          const SizedBox(width: 8),
+                          ProjectBillingBadge(status: billing.billingStatus),
+                        ],
+                      ],
                     ),
                   ],
                 ),

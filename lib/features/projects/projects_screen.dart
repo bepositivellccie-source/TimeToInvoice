@@ -7,7 +7,9 @@ import '../../core/providers/client_display_mode_provider.dart';
 import '../../core/providers/projects_provider.dart';
 import '../../core/providers/clients_provider.dart';
 import '../../core/providers/sessions_provider.dart';
+import '../../core/providers/project_billing_status_provider.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/widgets/project_billing_badge.dart';
 import '../clients/client_detail_screen.dart';
 
 // ─── Kanban config ───────────────────────────────────────────────────────────
@@ -622,16 +624,37 @@ class _ProjectCardState extends ConsumerState<_ProjectCard> {
                         ),
                       ],
                     ),
-                    // ── Ligne 2 : nom client gris ─────────────
+                    // ── Ligne 2 : nom client gris + badge facturation ──
                     const SizedBox(height: 3),
-                    Text(
-                      widget.clientName,
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: AppColors.textSecondary(context),
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            widget.clientName,
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: AppColors.textSecondary(context),
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        Consumer(
+                          builder: (context, ref, _) {
+                            final billing = ref
+                                .watch(projectBillingStatusByIdProvider(
+                                    widget.project.id))
+                                .valueOrNull;
+                            if (billing == null) return const SizedBox.shrink();
+                            return Padding(
+                              padding: const EdgeInsets.only(left: 8),
+                              child: ProjectBillingBadge(
+                                status: billing.billingStatus,
+                              ),
+                            );
+                          },
+                        ),
+                      ],
                     ),
                   ],
                 ),

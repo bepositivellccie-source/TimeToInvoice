@@ -2,6 +2,7 @@ class Invoice {
   final String id;
   final String userId;
   final String clientId;
+  final String? projectId;
   final String invoiceNumber;
   final double totalAmount;
   final String status; // draft, sent, paid, cancelled
@@ -21,6 +22,7 @@ class Invoice {
     required this.id,
     required this.userId,
     required this.clientId,
+    this.projectId,
     required this.invoiceNumber,
     required this.totalAmount,
     required this.status,
@@ -45,7 +47,7 @@ class Invoice {
   String get displayStatus {
     if (isOverdue) return 'En retard';
     return switch (status) {
-      'draft' => 'Brouillon',
+      'draft' => 'À envoyer',
       'sent' => 'Envoyée',
       'paid' => 'Payée',
       'cancelled' => 'Annulée',
@@ -68,6 +70,7 @@ class Invoice {
       id: json['id'] as String,
       userId: json['user_id'] as String,
       clientId: json['client_id'] as String,
+      projectId: json['project_id'] as String?,
       invoiceNumber: json['invoice_number'] as String,
       totalAmount: (json['total_amount'] as num).toDouble(),
       status: json['status'] as String? ?? 'draft',
