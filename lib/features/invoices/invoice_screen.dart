@@ -23,8 +23,7 @@ import '../../core/utils/invoice_pdf.dart';
 import '../../core/utils/paywall_gate.dart';
 import 'pdf_viewer_screen.dart';
 
-// TODO: false avant release
-const bool kAdminMode = true;
+const bool kAdminMode = false;
 
 class InvoiceScreen extends ConsumerStatefulWidget {
   final String projectId;
