@@ -18,12 +18,12 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
   Future<void> _skip() async {
     await ref.read(onboardingProvider.notifier).markDone();
-    if (mounted) context.go('/timer');
+    if (mounted) context.go('/home');
   }
 
   Future<void> _finish() async {
     await ref.read(onboardingProvider.notifier).markDone();
-    if (mounted) context.go('/timer');
+    if (mounted) context.go('/home');
   }
 
   void _next() => setState(() => _step++);

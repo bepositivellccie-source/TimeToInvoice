@@ -1,29 +1,32 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons/lucide_icons.dart';
-import '../../core/providers/session_bar_provider.dart';
 
+import '../../core/providers/session_bar_provider.dart';
+import '../../core/theme/cf_palette.dart';
+
+/// Shell ChronoFacture v2 — 4 onglets : Accueil / Chrono / Factures / Menu.
+///
+/// Branches GoRouter (cf. [appRouterProvider]) :
+///   0 = /home, 1 = /timer, 2 = /invoices, 3 = /menu.
 class AppShell extends ConsumerWidget {
   final StatefulNavigationShell navigationShell;
 
   const AppShell({super.key, required this.navigationShell});
 
-  static const _brand = Color(0xFF305DA8);
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final sessionBar = ref.watch(sessionBarProvider);
     final currentIdx = navigationShell.currentIndex;
-
-    // Branches : 0=Projets, 1=Clients, 2=Chrono, 3=Factures, 4=PDFs
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
+      backgroundColor: CF.bg(context),
       body: Column(
         children: [
           Expanded(child: navigationShell),
-          // ── Session bar persistante (mini-player) ─────────────────
           if (sessionBar != null)
             _SessionBar(
               data: sessionBar,
@@ -43,61 +46,92 @@ class AppShell extends ConsumerWidget {
         ],
       ),
 
-      // ── Bottom bar ────────────────────────────────────────────────
-      bottomNavigationBar: BottomAppBar(
-        padding: EdgeInsets.zero,
-        height: 64,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
+      // ── Bottom navbar : 4 onglets ──────────────────────────────
+      bottomNavigationBar: Container(
+        decoration: BoxDecoration(
+          color: isDark ? CF.d1 : CF.white,
+          border: Border(
+            top: BorderSide(color: CF.border(context), width: 0.5),
+          ),
+        ),
+        child: SafeArea(
+          top: false,
+          child: SizedBox(
+            height: 56,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                _NavItem(
+                  icon: LucideIcons.home,
+                  label: 'Accueil',
+                  isSelected: currentIdx == 0,
+                  onTap: () => navigationShell.goBranch(0,
+                      initialLocation: currentIdx == 0),
+                ),
+                _NavItem(
+                  icon: LucideIcons.timer,
+                  label: 'Chrono',
+                  isSelected: currentIdx == 1,
+                  onTap: () => navigationShell.goBranch(1,
+                      initialLocation: currentIdx == 1),
+                ),
+                _NavItem(
+                  icon: LucideIcons.fileText,
+                  label: 'Factures',
+                  isSelected: currentIdx == 2,
+                  onTap: () => navigationShell.goBranch(2,
+                      initialLocation: currentIdx == 2),
+                ),
+                _NavItem(
+                  icon: LucideIcons.menu,
+                  label: 'Menu',
+                  isSelected: currentIdx == 3,
+                  onTap: () => navigationShell.goBranch(3,
+                      initialLocation: currentIdx == 3),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Nav item ───────────────────────────────────────────────────────────────
+
+class _NavItem extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _NavItem({
+    required this.icon,
+    required this.label,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = isSelected ? CF.primary : CF.faint(context);
+    return Expanded(
+      child: InkWell(
+        onTap: onTap,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // ── Projets (branch 0) ──
-            _NavItem(
-              svgInactive: 'assets/icons/folder-inactif.svg',
-              svgActive: 'assets/icons/folder-actif.svg',
-              label: 'Projets',
-              isSelected: currentIdx == 0,
-              onTap: () => navigationShell.goBranch(0,
-                  initialLocation: currentIdx == 0),
-            ),
-
-            // ── Clients (branch 1) ──
-            _NavItem(
-              svgInactive: 'assets/icons/clients-inactif.svg',
-              svgActive: 'assets/icons/clients-actif.svg',
-              label: 'Clients',
-              isSelected: currentIdx == 1,
-              onTap: () => navigationShell.goBranch(1,
-                  initialLocation: currentIdx == 1),
-            ),
-
-            // ── Chrono (branch 2) — onglet normal ──
-            _NavItem(
-              svgInactive: 'assets/icons/chrono-inactif.svg',
-              svgActive: 'assets/icons/chrono-actif.svg',
-              label: 'Chrono',
-              isSelected: currentIdx == 2,
-              onTap: () => navigationShell.goBranch(2,
-                  initialLocation: currentIdx == 2),
-            ),
-
-            // ── Factures (branch 3) ──
-            _NavItem(
-              svgInactive: 'assets/icons/Facture-inactif.svg',
-              svgActive: 'assets/icons/Facture-actif.svg',
-              label: 'Factures',
-              isSelected: currentIdx == 3,
-              onTap: () => navigationShell.goBranch(3,
-                  initialLocation: currentIdx == 3),
-            ),
-
-            // ── PDFs (branch 4) ──
-            _NavItem(
-              svgInactive: 'assets/icons/pdf-inactifs.svg',
-              svgActive: 'assets/icons/pdf.actif.svg',
-              label: 'PDFs',
-              isSelected: currentIdx == 4,
-              onTap: () => navigationShell.goBranch(4,
-                  initialLocation: currentIdx == 4),
+            Icon(icon, size: 24, color: color),
+            const SizedBox(height: 3),
+            Text(
+              label,
+              style: GoogleFonts.inter(
+                fontSize: 10.5,
+                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                color: color,
+                letterSpacing: 0.1,
+              ),
             ),
           ],
         ),
@@ -160,16 +194,14 @@ class _SessionBarState extends State<_SessionBar>
           onTap: widget.onTap,
           child: Container(
             width: double.infinity,
-            color: const Color(0xFF305DA8),
+            color: CF.chrono,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             child: Row(
               children: [
-                // ── Contenu 2 lignes ───────────────────────────────────
                 Expanded(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      // Ligne 1 — date + capsule durée
                       Row(
                         children: [
                           Expanded(
@@ -205,7 +237,6 @@ class _SessionBarState extends State<_SessionBar>
                         ],
                       ),
                       const SizedBox(height: 4),
-                      // Ligne 2 — heures + montant
                       Row(
                         children: [
                           Text(
@@ -229,7 +260,6 @@ class _SessionBarState extends State<_SessionBar>
                     ],
                   ),
                 ),
-                // ── Chevron ────────────────────────────────────────────
                 if (widget.data.clientId != null)
                   const Padding(
                     padding: EdgeInsets.only(left: 8),
@@ -242,82 +272,6 @@ class _SessionBarState extends State<_SessionBar>
               ],
             ),
           ),
-        ),
-      ),
-    );
-  }
-}
-
-// ─── Navigation item (SVG custom) ─────────────────────────────────────────
-
-class _NavItem extends StatefulWidget {
-  final String svgInactive;
-  final String svgActive;
-  final String label;
-  final bool isSelected;
-  final VoidCallback onTap;
-
-  const _NavItem({
-    required this.svgInactive,
-    required this.svgActive,
-    required this.label,
-    required this.isSelected,
-    required this.onTap,
-  });
-
-  @override
-  State<_NavItem> createState() => _NavItemState();
-}
-
-class _NavItemState extends State<_NavItem> {
-  bool _pressed = false;
-
-  static const _active = Color(0xFF305DA8);
-  static const _inactive = Color(0xFF9CA3AF);
-
-  @override
-  Widget build(BuildContext context) {
-    final color = widget.isSelected ? _active : _inactive;
-    final svgPath = widget.isSelected ? widget.svgActive : widget.svgInactive;
-
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTapDown: (_) => setState(() => _pressed = true),
-      onTapUp: (_) => setState(() => _pressed = false),
-      onTapCancel: () => setState(() => _pressed = false),
-      onTap: widget.onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 120),
-        width: 60,
-        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 2),
-        decoration: BoxDecoration(
-          color: _pressed
-              ? (Theme.of(context).brightness == Brightness.dark
-                  ? Colors.white.withAlpha(15)
-                  : Colors.black.withAlpha(10))
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SvgPicture.asset(
-              svgPath,
-              width: 22,
-              height: 22,
-              colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
-            ),
-            const SizedBox(height: 3),
-            Text(
-              widget.label,
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight:
-                    widget.isSelected ? FontWeight.w700 : FontWeight.w500,
-                color: color,
-              ),
-            ),
-          ],
         ),
       ),
     );

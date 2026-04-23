@@ -5,7 +5,9 @@ import '../providers/supabase_provider.dart';
 import '../providers/onboarding_provider.dart';
 import '../../features/auth/login_screen.dart';
 import '../../features/splash/splash_screen.dart';
+import '../../features/home/home_screen.dart';
 import '../../features/timer/timer_screen.dart';
+import '../../features/menu/menu_screen.dart';
 import '../../features/clients/clients_screen.dart';
 import '../../features/clients/client_detail_screen.dart';
 import '../../features/clients/client_profile_screen.dart';
@@ -61,14 +63,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       if (loc == '/login' || loc == '/splash') {
         final done = onboardingAsync.valueOrNull;
         if (done == null) return null;
-        return done ? '/timer' : '/onboarding';
+        return done ? '/home' : '/onboarding';
       }
 
       final done = onboardingAsync.valueOrNull;
       if (done == null) return null;
 
       if (!done && loc != '/onboarding') return '/onboarding';
-      if (done && loc == '/onboarding') return '/timer';
+      if (done && loc == '/onboarding') return '/home';
 
       return null;
     },
@@ -109,6 +111,47 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const SettingsScreen(),
       ),
 
+      // ── Projets (hors shell — accès depuis Menu) ─────────────────────────
+      GoRoute(
+        path: '/projects',
+        builder: (context, state) => const ProjectsScreen(),
+      ),
+
+      // ── Clients + sous-routes (hors shell — accès depuis Menu) ──────────
+      GoRoute(
+        path: '/clients',
+        builder: (context, state) => const ClientsScreen(),
+        routes: [
+          GoRoute(
+            path: ':clientId',
+            builder: (context, state) => ClientDetailScreen(
+              clientId: state.pathParameters['clientId']!,
+            ),
+            routes: [
+              GoRoute(
+                path: 'profile',
+                builder: (context, state) => ClientProfileScreen(
+                  clientId: state.pathParameters['clientId']!,
+                ),
+              ),
+              GoRoute(
+                path: 'projects/:projectId/sessions',
+                builder: (context, state) => SessionsScreen(
+                  projectId: state.pathParameters['projectId']!,
+                  highlightSessionId: state.extra as String?,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+
+      // ── PDFs (hors shell — accès depuis Menu) ───────────────────────────
+      GoRoute(
+        path: '/pdfs',
+        builder: (context, state) => const PdfGalleryScreen(),
+      ),
+
       // ── Facture (hors shell — écran focalisé) ─────────────────────────────
       GoRoute(
         path: '/invoices/new/:projectId',
@@ -117,55 +160,23 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         ),
       ),
 
-      // ── Shell avec bottom nav ─────────────────────────────────────────────
+      // ── Shell avec bottom nav 4 onglets ──────────────────────────────────
+      // Branches : 0=/home, 1=/timer, 2=/invoices, 3=/menu
       StatefulShellRoute.indexedStack(
         builder: (context, state, navigationShell) =>
             AppShell(navigationShell: navigationShell),
         branches: [
-          // Branch 0 — Projets (tous clients)
+          // Branch 0 — Accueil (KPI semaine + À faire)
           StatefulShellBranch(
             routes: [
               GoRoute(
-                path: '/projects',
-                builder: (context, state) => const ProjectsScreen(),
+                path: '/home',
+                builder: (context, state) => const HomeScreen(),
               ),
             ],
           ),
 
-          // Branch 1 — Clients → Client detail → Sessions
-          StatefulShellBranch(
-            routes: [
-              GoRoute(
-                path: '/clients',
-                builder: (context, state) => const ClientsScreen(),
-                routes: [
-                  GoRoute(
-                    path: ':clientId',
-                    builder: (context, state) => ClientDetailScreen(
-                      clientId: state.pathParameters['clientId']!,
-                    ),
-                    routes: [
-                      GoRoute(
-                        path: 'profile',
-                        builder: (context, state) => ClientProfileScreen(
-                          clientId: state.pathParameters['clientId']!,
-                        ),
-                      ),
-                      GoRoute(
-                        path: 'projects/:projectId/sessions',
-                        builder: (context, state) => SessionsScreen(
-                          projectId: state.pathParameters['projectId']!,
-                          highlightSessionId: state.extra as String?,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ],
-          ),
-
-          // Branch 2 — Timer (Chrono, FAB central)
+          // Branch 1 — Chrono (timer)
           StatefulShellBranch(
             routes: [
               GoRoute(
@@ -175,24 +186,22 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             ],
           ),
 
-          // Branch 3 — Factures (historique)
+          // Branch 2 — Factures (historique)
           StatefulShellBranch(
             routes: [
               GoRoute(
                 path: '/invoices',
-                builder: (context, state) =>
-                    const InvoicesHistoryScreen(),
+                builder: (context, state) => const InvoicesHistoryScreen(),
               ),
             ],
           ),
 
-          // Branch 4 — PDFs (galerie)
+          // Branch 3 — Menu (Clients/Projets/PDFs/Paramètres)
           StatefulShellBranch(
             routes: [
               GoRoute(
-                path: '/pdfs',
-                builder: (context, state) =>
-                    const PdfGalleryScreen(),
+                path: '/menu',
+                builder: (context, state) => const MenuScreen(),
               ),
             ],
           ),
