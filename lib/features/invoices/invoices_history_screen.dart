@@ -1,20 +1,20 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
-import 'package:lucide_icons/lucide_icons.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:share_plus/share_plus.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 
 import '../../core/models/invoice.dart';
 import '../../core/providers/invoices_provider.dart';
-import '../../core/theme/app_colors.dart';
-import 'pdf_viewer_screen.dart';
+import '../../core/theme/cf_palette.dart';
+import 'invoice_detail_screen.dart';
 
+/// Liste des factures — refonte ChronoFacture v2.
+///
+/// - Header maison (pas d'AppBar)
+/// - Recherche + filtres statut (chips inline)
+/// - Liste groupée par mois (Inter + JetBrainsMono)
+/// - Tap → push InvoiceDetailScreen plein écran
 class InvoicesHistoryScreen extends ConsumerStatefulWidget {
   const InvoicesHistoryScreen({super.key});
 
@@ -25,11 +25,8 @@ class InvoicesHistoryScreen extends ConsumerStatefulWidget {
 
 class _InvoicesHistoryScreenState
     extends ConsumerState<InvoicesHistoryScreen> {
-  /// null = tous les mois
-  DateTime? _filterMonth;
-
-  /// null = tous les statuts, 'sent' | 'overdue' | 'paid'
-  String? _filterStatus;
+  /// null = tous statuts, sinon 'pending' (draft+sent non overdue) | 'overdue' | 'paid'
+  String? _statusFilter;
 
   final TextEditingController _searchCtrl = TextEditingController();
   String _searchQuery = '';
@@ -43,181 +40,25 @@ class _InvoicesHistoryScreenState
     });
   }
 
-  bool get _hasActiveFilters =>
-      _filterStatus != null || _filterMonth != null;
-
-  int get _activeFilterCount {
-    int count = 0;
-    if (_filterStatus != null) count++;
-    if (_filterMonth != null) count++;
-    return count;
-  }
-
   @override
   void dispose() {
     _searchCtrl.dispose();
     super.dispose();
   }
 
-  void _showFilterSheet(List<DateTime> months) {
-    final fmt = DateFormat('MMM yyyy', 'fr_FR');
-
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (_) => StatefulBuilder(
-        builder: (ctx, setSheetState) => Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Handle
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFE5E7EB),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
-
-              // ── Statut ──────────────────────────────────────
-              const Text(
-                'Statut',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF6B7280),
-                ),
-              ),
-              const SizedBox(height: 10),
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: [
-                    for (var i = 0; i < _statusItems.length; i++) ...[
-                      if (i > 0) const SizedBox(width: 8),
-                      _filterChip(
-                        label: _statusItems[i].$2,
-                        color: _statusItems[i].$3,
-                        isSelected: _filterStatus == _statusItems[i].$1,
-                        onTap: () {
-                          setState(() => _filterStatus = _statusItems[i].$1);
-                          setSheetState(() {});
-                        },
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              const SizedBox(height: 20),
-
-              // ── Période ─────────────────────────────────────
-              const Text(
-                'Période',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF6B7280),
-                ),
-              ),
-              const SizedBox(height: 10),
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: [
-                    _filterChip(
-                      label: 'Tout',
-                      color: Theme.of(context).colorScheme.primary,
-                      isSelected: _filterMonth == null,
-                      onTap: () {
-                        setState(() => _filterMonth = null);
-                        setSheetState(() {});
-                      },
-                    ),
-                    for (final m in months) ...[
-                      const SizedBox(width: 8),
-                      _filterChip(
-                        label: fmt.format(m),
-                        color: Theme.of(context).colorScheme.primary,
-                        isSelected: _filterMonth != null &&
-                            _filterMonth!.year == m.year &&
-                            _filterMonth!.month == m.month,
-                        onTap: () {
-                          setState(() => _filterMonth = m);
-                          setSheetState(() {});
-                        },
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              const SizedBox(height: 20),
-
-              // ── Réinitialiser ───────────────────────────────
-              if (_hasActiveFilters)
-                SizedBox(
-                  width: double.infinity,
-                  child: TextButton(
-                    onPressed: () {
-                      setState(() {
-                        _filterStatus = null;
-                        _filterMonth = null;
-                      });
-                      Navigator.pop(ctx);
-                    },
-                    child: const Text('Réinitialiser les filtres'),
-                  ),
-                ),
-              const SizedBox(height: 8),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  static const _statusItems = <(String?, String, Color)>[
-    (null, 'Tout', Color(0xFF6B7280)),
-    ('sent', 'À encaisser', Color(0xFF305DA8)),
-    ('overdue', 'En retard', Color(0xFFDC2626)),
-    ('paid', 'Payées', Color(0xFF16A34A)),
-  ];
-
-  Widget _filterChip({
-    required String label,
-    required Color color,
-    required bool isSelected,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-        decoration: BoxDecoration(
-          color: isSelected ? color.withAlpha(25) : Colors.transparent,
-          border: Border.all(
-            color: isSelected ? color : const Color(0xFFE5E7EB),
-            width: isSelected ? 1.5 : 1,
-          ),
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-            color: isSelected ? color : const Color(0xFF6B7280),
-          ),
-        ),
-      ),
-    );
+  bool _matchesStatus(Invoice inv) {
+    switch (_statusFilter) {
+      case null:
+        return true;
+      case 'pending':
+        return !inv.isOverdue && (inv.status == 'draft' || inv.status == 'sent');
+      case 'overdue':
+        return inv.isOverdue;
+      case 'paid':
+        return inv.status == 'paid';
+      default:
+        return true;
+    }
   }
 
   @override
@@ -225,200 +66,225 @@ class _InvoicesHistoryScreenState
     final invoicesAsync = ref.watch(invoicesProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Factures')),
-      body: invoicesAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Erreur : $e')),
-        data: (invoices) {
-          if (invoices.isEmpty) return const _EmptyInvoices();
-
-          // Mois disponibles pour le filtre
-          final months = _availableMonths(invoices);
-
-          // Filtre combiné : recherche + statut + mois
-          final displayed = invoices.where((inv) {
-            // Filtre recherche
-            if (_searchQuery.isNotEmpty) {
-              final name = (inv.clientName ?? '').toLowerCase();
-              if (!name.contains(_searchQuery)) {
-                return false;
-              }
-            }
-            // Filtre statut
-            if (_filterStatus == 'sent' &&
-                !(inv.status == 'sent' && !inv.isOverdue)) {
-              return false;
-            }
-            if (_filterStatus == 'overdue' && !inv.isOverdue) {
-              return false;
-            }
-            if (_filterStatus == 'paid' && inv.status != 'paid') {
-              return false;
-            }
-            // Filtre mois
-            if (_filterMonth != null) {
-              final d = inv.createdAt.toLocal();
-              if (d.year != _filterMonth!.year ||
-                  d.month != _filterMonth!.month) {
-                return false;
-              }
-            }
-            return true;
-          }).toList();
-
-          // Regrouper par mois
-          final grouped = _groupByMonth(displayed);
-
-          return Column(
-            children: [
-              // ── Recherche + bouton Filtres ─────────────────────
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _searchCtrl,
-                        decoration: InputDecoration(
-                          hintText: 'Rechercher un client…',
-                          hintStyle: const TextStyle(
-                            fontSize: 14,
-                            color: Color(0xFFBDBDBD),
-                          ),
-                          prefixIcon: const Icon(LucideIcons.search,
-                              size: 18, color: Color(0xFF9CA3AF)),
-                          suffixIcon: _searchQuery.isNotEmpty
-                              ? GestureDetector(
-                                  onTap: () => _searchCtrl.clear(),
-                                  child: const Icon(LucideIcons.x,
-                                      size: 16,
-                                      color: Color(0xFF9CA3AF)),
-                                )
-                              : null,
-                          filled: true,
-                          fillColor:
-                              Theme.of(context).brightness ==
-                                      Brightness.dark
-                                  ? const Color(0xFF1F2937)
-                                  : const Color(0xFFF3F4F6),
-                          isDense: true,
-                          contentPadding:
-                              const EdgeInsets.symmetric(vertical: 0),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide.none,
-                          ),
-                        ),
-                        style: const TextStyle(fontSize: 14),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    GestureDetector(
-                      onTap: () => _showFilterSheet(months),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 14, vertical: 10),
-                        decoration: BoxDecoration(
-                          color: _hasActiveFilters
-                              ? const Color(0xFF305DA8)
-                              : const Color(0xFFF3F4F6),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              LucideIcons.slidersHorizontal,
-                              size: 18,
-                              color: _hasActiveFilters
-                                  ? Colors.white
-                                  : const Color(0xFF6B7280),
-                            ),
-                            if (_hasActiveFilters) ...[
-                              const SizedBox(width: 6),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius:
-                                      BorderRadius.circular(10),
-                                ),
-                                child: Text(
-                                  '$_activeFilterCount',
-                                  style: const TextStyle(
-                                    fontSize: 11,
-                                    color: Color(0xFF305DA8),
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
+      backgroundColor: CF.bg(context),
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          children: [
+            const _Header(),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+              child: _SearchField(controller: _searchCtrl),
+            ),
+            _FilterRow(
+              current: _statusFilter,
+              onChanged: (v) => setState(() => _statusFilter = v),
+            ),
+            const SizedBox(height: 12),
+            Expanded(
+              child: invoicesAsync.when(
+                loading: () => const Center(
+                    child: CircularProgressIndicator(color: CF.primary)),
+                error: (e, _) => Center(
+                  child: Text(
+                    'Erreur : $e',
+                    style: GoogleFonts.inter(color: CF.muted(context)),
+                  ),
                 ),
-              ),
+                data: (all) {
+                  if (all.isEmpty) return const _EmptyInvoices();
 
-              // ── Liste groupée par mois ────────────────────────
-              Expanded(
-                child: displayed.isEmpty
-                    ? const Center(
-                        child: Text('Aucune facture ce mois',
-                            style: TextStyle(color: Color(0xFF9CA3AF))))
-                    : ListView.builder(
-                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
-                        itemCount: grouped.length,
-                        itemBuilder: (context, gi) {
-                          final key = grouped.keys.elementAt(gi);
-                          final monthInvoices = grouped[key]!;
-                          return Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              if (gi > 0) const SizedBox(height: 16),
-                              // ── En-tête mois ────────────────────
-                              Padding(
-                                padding: const EdgeInsets.only(
-                                    left: 4, bottom: 8),
-                                child: Text(
-                                  _monthLabel(key),
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w700,
-                                    color: AppColors.textSecondary(context),
-                                    letterSpacing: 0.2,
-                                  ),
-                                ),
-                              ),
-                              // ── Factures du mois ────────────────
-                              for (int i = 0;
-                                  i < monthInvoices.length;
-                                  i++) ...[
-                                _InvoiceTile(
-                                  invoice: monthInvoices[i],
-                                  onTap: () => _showDetail(
-                                      context, monthInvoices[i]),
-                                  onDelete: () =>
-                                      _confirmDelete(monthInvoices[i]),
-                                ),
-                                if (i < monthInvoices.length - 1)
-                                  const SizedBox(height: 8),
-                              ],
-                            ],
-                          );
-                        },
+                  final filtered = all.where((inv) {
+                    if (_searchQuery.isNotEmpty) {
+                      final n = (inv.clientName ?? '').toLowerCase();
+                      final num = inv.invoiceNumber.toLowerCase();
+                      if (!n.contains(_searchQuery) &&
+                          !num.contains(_searchQuery)) {
+                        return false;
+                      }
+                    }
+                    return _matchesStatus(inv);
+                  }).toList();
+
+                  if (filtered.isEmpty) return const _EmptyFiltered();
+
+                  return RefreshIndicator(
+                    color: CF.primary,
+                    onRefresh: () async {
+                      ref.invalidate(invoicesProvider);
+                      await ref.read(invoicesProvider.future);
+                    },
+                    child: _GroupedList(
+                      invoices: filtered,
+                      onTap: (inv) => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) =>
+                              InvoiceDetailScreen(invoiceId: inv.id),
+                        ),
                       ),
+                    ),
+                  );
+                },
               ),
-            ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Header ─────────────────────────────────────────────────────────────────
+
+class _Header extends StatelessWidget {
+  const _Header();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 14, 20, 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              'Mes factures',
+              style: GoogleFonts.inter(
+                fontSize: CFType.h1,
+                fontWeight: FontWeight.w700,
+                color: CF.text(context),
+                letterSpacing: -0.6,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Search ─────────────────────────────────────────────────────────────────
+
+class _SearchField extends StatelessWidget {
+  final TextEditingController controller;
+  const _SearchField({required this.controller});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: CF.surfaceAlt(context),
+        borderRadius: BorderRadius.circular(CFRadius.md),
+      ),
+      child: TextField(
+        controller: controller,
+        style: GoogleFonts.inter(fontSize: CFType.body, color: CF.text(context)),
+        decoration: InputDecoration(
+          hintText: 'Rechercher un client ou un n°…',
+          hintStyle: GoogleFonts.inter(
+            fontSize: CFType.body,
+            color: CF.faint(context),
+          ),
+          prefixIcon:
+              Icon(LucideIcons.search, size: 18, color: CF.faint(context)),
+          suffixIcon: controller.text.isNotEmpty
+              ? IconButton(
+                  icon: Icon(LucideIcons.x, size: 16, color: CF.faint(context)),
+                  onPressed: controller.clear,
+                  splashRadius: 18,
+                )
+              : null,
+          border: InputBorder.none,
+          isDense: true,
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Filter row ─────────────────────────────────────────────────────────────
+
+class _FilterRow extends StatelessWidget {
+  final String? current;
+  final ValueChanged<String?> onChanged;
+
+  const _FilterRow({required this.current, required this.onChanged});
+
+  static const _items = <(String?, String)>[
+    (null, 'Toutes'),
+    ('pending', 'À encaisser'),
+    ('overdue', 'En retard'),
+    ('paid', 'Payées'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 36,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        itemCount: _items.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 8),
+        itemBuilder: (_, i) {
+          final item = _items[i];
+          final selected = current == item.$1;
+          return _Chip(
+            label: item.$2,
+            selected: selected,
+            onTap: () => onChanged(item.$1),
           );
         },
       ),
     );
   }
+}
 
-  Map<String, List<Invoice>> _groupByMonth(List<Invoice> invoices) {
+class _Chip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _Chip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: selected ? CF.primary : CF.surfaceAlt(context),
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          child: Text(
+            label,
+            style: GoogleFonts.inter(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: selected ? Colors.white : CF.muted(context),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Grouped list ──────────────────────────────────────────────────────────
+
+class _GroupedList extends StatelessWidget {
+  final List<Invoice> invoices;
+  final ValueChanged<Invoice> onTap;
+
+  const _GroupedList({required this.invoices, required this.onTap});
+
+  Map<String, List<Invoice>> _group() {
     final map = <String, List<Invoice>>{};
     for (final inv in invoices) {
       final d = inv.createdAt.toLocal();
@@ -430,715 +296,322 @@ class _InvoicesHistoryScreenState
     );
   }
 
-  String _monthLabel(String key) {
-    final parts = key.split('-');
-    final year = int.parse(parts[0]);
-    final month = int.parse(parts[1]);
-    final dt = DateTime(year, month);
-    final raw = DateFormat('MMMM yyyy', 'fr_FR').format(dt);
-    return raw[0].toUpperCase() + raw.substring(1);
-  }
-
-  List<DateTime> _availableMonths(List<Invoice> invoices) {
-    final set = <String, DateTime>{};
-    for (final inv in invoices) {
-      final d = inv.createdAt.toLocal();
-      final key = '${d.year}-${d.month}';
-      set.putIfAbsent(key, () => DateTime(d.year, d.month));
-    }
-    final list = set.values.toList()
-      ..sort((a, b) => b.compareTo(a));
-    return list;
-  }
-
-  Future<void> _confirmDelete(Invoice invoice) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Supprimer cette facture ?'),
-        content: Text(
-            'La facture ${invoice.invoiceNumber} sera supprimée définitivement.'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Annuler')),
-          FilledButton(
-            style: FilledButton.styleFrom(
-                backgroundColor: AppColors.danger),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Supprimer'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed == true && mounted) {
-      await ref.read(invoicesProvider.notifier).delete(invoice.id);
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-          ..clearSnackBars()
-          ..showSnackBar(const SnackBar(
-            content: Text('Facture supprimée'),
-            behavior: SnackBarBehavior.floating,
-          ));
-      }
-    }
-  }
-
-  void _showDetail(BuildContext context, Invoice invoice) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => _InvoiceDetailSheet(invoice: invoice),
-    );
-  }
-}
-
-// ─── Helper : détection facture en retard (via due_at, pas via status) ────
-
-bool _isOverdue(Invoice invoice) {
-  return invoice.status != 'paid' &&
-      invoice.status != 'draft' &&
-      invoice.dueAt != null &&
-      invoice.dueAt!.isBefore(DateTime.now());
-}
-
-const _tileStatusColors = {
-  'draft': Color(0xFF6B7280),
-  'sent': Color(0xFF305DA8),
-  'paid': Color(0xFF16A34A),
-  'cancelled': Color(0xFF9CA3AF),
-};
-
-Color _statusBadgeColor(Invoice inv) {
-  if (inv.isOverdue) return AppColors.danger;
-  return _tileStatusColors[inv.status] ?? const Color(0xFF6B7280);
-}
-
-class _StatusBadge extends StatelessWidget {
-  final Invoice invoice;
-
-  const _StatusBadge({required this.invoice});
-
-  @override
-  Widget build(BuildContext context) {
-    final color = _statusBadgeColor(invoice);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-      decoration: BoxDecoration(
-        color: color.withAlpha(20),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Text(
-        invoice.displayStatus,
-        style: TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w700,
-          color: color,
-        ),
-      ),
-    );
-  }
-}
-
-// ─── Invoice tile — swipe gauche → delete ──────────────────────────────────
-
-class _InvoiceTile extends StatefulWidget {
-  final Invoice invoice;
-  final VoidCallback onTap;
-  final VoidCallback onDelete;
-
-  const _InvoiceTile({
-    required this.invoice,
-    required this.onTap,
-    required this.onDelete,
-  });
-
-  @override
-  State<_InvoiceTile> createState() => _InvoiceTileState();
-}
-
-class _InvoiceTileState extends State<_InvoiceTile> {
-  double _dragOffset = 0;
-
-  @override
-  Widget build(BuildContext context) {
-    final inv = widget.invoice;
-    final dateFmt = DateFormat('dd MMMM yyyy', 'fr_FR');
-    final euroFmt = NumberFormat.currency(
-        locale: 'fr_FR',
-        symbol: '€',
-        decimalDigits: 2);
-    final screenWidth = MediaQuery.sizeOf(context).width;
-
-    final deleteOpacity = (_dragOffset.abs() / 80).clamp(0.0, 1.0);
-
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(14),
-      child: Stack(
-        children: [
-          // ── Fond rouge delete ─────────────────────────────────
-          if (_dragOffset < 0)
-            Positioned.fill(
-              child: Container(
-                decoration: BoxDecoration(
-                  color: AppColors.danger,
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                alignment: Alignment.centerRight,
-                padding: const EdgeInsets.only(right: 24),
-                child: Opacity(
-                  opacity: deleteOpacity,
-                  child: const Icon(LucideIcons.trash2,
-                      color: Colors.white, size: 22),
-                ),
-              ),
-            ),
-          // ── Card glissante ────────────────────────────────────
-          AnimatedContainer(
-            duration: Duration(milliseconds: _dragOffset == 0 ? 200 : 0),
-            curve: Curves.easeOut,
-            transform: Matrix4.translationValues(_dragOffset, 0, 0),
-            child: GestureDetector(
-              onHorizontalDragUpdate: (d) {
-                setState(() {
-                  _dragOffset =
-                      (_dragOffset + d.delta.dx).clamp(-screenWidth, 0.0);
-                });
-              },
-              onHorizontalDragEnd: (d) {
-                final velocity = d.primaryVelocity ?? 0;
-                if (_dragOffset < -screenWidth * 0.30 || velocity < -800) {
-                  widget.onDelete();
-                  setState(() => _dragOffset = 0);
-                } else {
-                  setState(() => _dragOffset = 0);
-                }
-              },
-              child: Material(
-                color: Theme.of(context).cardTheme.color ??
-                    Theme.of(context).colorScheme.surface,
-                borderRadius: BorderRadius.circular(14),
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(14),
-                  onTap: widget.onTap,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 14),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: const Color(0xFFE5E7EB)),
-                    ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // 1. Icône statut
-                        Container(
-                          width: 44,
-                          height: 44,
-                          decoration: BoxDecoration(
-                            color: _statusBadgeColor(inv).withAlpha(20),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Builder(
-                            builder: (_) {
-                              final overdue = _isOverdue(inv);
-                              final isPaid = inv.status == 'paid';
-                              final isDraft = inv.status == 'draft';
-                              final assetName = isDraft
-                                  ? 'assets/icons/Facture-inactif.svg'
-                                  : 'assets/icons/Facture-actif.svg';
-                              final iconColor = overdue
-                                  ? const Color(0xFFEF4444)
-                                  : isPaid
-                                      ? const Color(0xFF22C55E)
-                                      : isDraft
-                                          ? const Color(0xFF9CA3AF)
-                                          : const Color(0xFF305DA8);
-                              return Center(
-                                child: SvgPicture.asset(
-                                  assetName,
-                                  width: 24,
-                                  height: 24,
-                                  colorFilter: ColorFilter.mode(
-                                    iconColor,
-                                    BlendMode.srcIn,
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        // 2. Colonne centrale
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              // Ligne 1 : nom client + montant + chevron
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      inv.clientName ?? '—',
-                                      style: const TextStyle(
-                                        fontSize: 15,
-                                        fontWeight: FontWeight.w600,
-                                        color: Color(0xFF111827),
-                                      ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    euroFmt.format(inv.totalAmount),
-                                    style: const TextStyle(
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.w600,
-                                      color: Color(0xFF111827),
-                                    ),
-                                  ),
-                                  const Icon(LucideIcons.chevronRight,
-                                      color: Color(0xFF9CA3AF), size: 18),
-                                ],
-                              ),
-                              const SizedBox(height: 2),
-                              // Ligne 2 : date
-                              Text(
-                                dateFmt.format(inv.createdAt.toLocal()),
-                                style: const TextStyle(
-                                  fontSize: 13,
-                                  color: Color(0xFF6B7280),
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              // Ligne 3 : N° + badge statut + icône sentVia
-                              Row(
-                                children: [
-                                  Text(
-                                    'N° ${inv.invoiceNumber}',
-                                    style: const TextStyle(
-                                      fontSize: 11,
-                                      color: Color(0xFF9CA3AF),
-                                    ),
-                                  ),
-                                  const Spacer(),
-                                  _StatusBadge(invoice: inv),
-                                  if (inv.sentVia == 'email' ||
-                                      inv.sentVia == 'whatsapp') ...[
-                                    const SizedBox(width: 6),
-                                    Icon(
-                                      inv.sentVia == 'whatsapp'
-                                          ? LucideIcons.messageCircle
-                                          : LucideIcons.mail,
-                                      size: 14,
-                                      color: const Color(0xFF9CA3AF),
-                                    ),
-                                  ],
-                                ],
-                              ),
-                              // Ligne 4 (overdue only) : date d'échéance alignée à droite
-                              if (_isOverdue(inv) && inv.dueAt != null) ...[
-                                const SizedBox(height: 2),
-                                Align(
-                                  alignment: Alignment.centerRight,
-                                  child: Text(
-                                    'Éch. ${DateFormat('d MMM', 'fr_FR').format(inv.dueAt!.toLocal())}',
-                                    style: const TextStyle(
-                                      fontSize: 11,
-                                      color: Color(0xFFEF4444),
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ─── Invoice detail bottom sheet ───────────────────────────────────────────
-
-class _InvoiceDetailSheet extends ConsumerStatefulWidget {
-  final Invoice invoice;
-
-  const _InvoiceDetailSheet({required this.invoice});
-
-  @override
-  ConsumerState<_InvoiceDetailSheet> createState() =>
-      _InvoiceDetailSheetState();
-}
-
-class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
-  bool _sending = false;
-  bool _loadingPdf = false;
-
-  static const _sheetStatusColors = {
-    'draft': Color(0xFF6B7280),
-    'sent': Color(0xFF305DA8),
-    'paid': Color(0xFF16A34A),
-    'cancelled': Color(0xFF9CA3AF),
-  };
-
-  Color _sheetStatusColor(Invoice inv) {
-    if (inv.isOverdue) return AppColors.danger;
-    return _sheetStatusColors[inv.status] ?? const Color(0xFF6B7280);
-  }
-
-  /// Ouvre le PDF de la facture (téléchargement Storage ou fichier local).
-  Future<void> _viewPdf(Invoice inv) async {
-    setState(() => _loadingPdf = true);
-    try {
-      if (inv.pdfPath != null) {
-        final bytes = await Supabase.instance.client.storage
-            .from('invoices')
-            .download(inv.pdfPath!);
-        final dir = await getTemporaryDirectory();
-        final file =
-            File('${dir.path}/${inv.invoiceNumber}.pdf');
-        await file.writeAsBytes(bytes);
-        if (mounted) {
-          await Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (_) => PdfViewerScreen(
-                filePath: file.path,
-                invoice: inv,
-              ),
-            ),
-          );
-        }
-      } else {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('PDF non disponible pour cette facture')),
-          );
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erreur : $e')),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _loadingPdf = false);
-      }
-    }
-  }
-
-  /// Construit le corps d'email standard.
-  String _emailBody(Invoice inv, String formattedAmount) {
-    return 'Bonjour,\n\n'
-        'Veuillez trouver ci-joint la facture ${inv.invoiceNumber} '
-        'd\'un montant de $formattedAmount.\n\n'
-        'Date d\'émission : ${DateFormat('dd/MM/yyyy', 'fr_FR').format(inv.createdAt.toLocal())}\n'
-        'Échéance : 30 jours\n\n'
-        'Merci de votre confiance.\n\n'
-        'Cordialement';
-  }
-
-  /// Envoie la facture par email (PDF en pièce jointe via share sheet,
-  /// ou mailto: si le PDF n'est plus disponible localement).
-  Future<void> _sendEmail(Invoice inv) async {
-    setState(() => _sending = true);
-
-    final euroFmt = NumberFormat.currency(
-        locale: 'fr_FR', symbol: '€', decimalDigits: 2);
-    final amount = euroFmt.format(inv.totalAmount);
-    final subject = 'Facture ${inv.invoiceNumber} — ${inv.clientName ?? ""}';
-    final body = _emailBody(inv, amount);
-
-    try {
-      // 1. Fichier local ?
-      final dir = await getApplicationDocumentsDirectory();
-      final localFile = File('${dir.path}/Facture_${inv.invoiceNumber}.pdf');
-
-      if (await localFile.exists()) {
-        // Partage depuis le fichier local
-        await Share.shareXFiles(
-          [XFile(localFile.path, mimeType: 'application/pdf')],
-          subject: subject,
-          text: body,
-        );
-      } else if (inv.pdfPath != null) {
-        // 2. Télécharger depuis Supabase Storage
-        final bytes = await Supabase.instance.client.storage
-            .from('invoices')
-            .download(inv.pdfPath!);
-        final tmpDir = await getTemporaryDirectory();
-        final tmpFile =
-            File('${tmpDir.path}/Facture_${inv.invoiceNumber}.pdf');
-        await tmpFile.writeAsBytes(bytes);
-        await Share.shareXFiles(
-          [XFile(tmpFile.path, mimeType: 'application/pdf')],
-          subject: subject,
-          text: body,
-        );
-      } else {
-        // 3. Fallback : mailto sans pièce jointe
-        final uri = Uri(
-          scheme: 'mailto',
-          path: inv.clientEmail ?? '',
-          queryParameters: {'subject': subject, 'body': body},
-        );
-        if (await canLaunchUrl(uri)) {
-          await launchUrl(uri);
-        }
-      }
-
-      // Historique d'envoi + statut → envoyée
-      if (mounted) {
-        await ref.read(invoicesProvider.notifier).markAsSentByNumber(
-              inv.invoiceNumber,
-              via: 'shared',
-              to: inv.clientEmail,
-            );
-      }
-
-      if (mounted) {
-        Navigator.pop(context);
-        ScaffoldMessenger.of(context)
-          ..clearSnackBars()
-          ..showSnackBar(const SnackBar(
-            content: Text('Facture envoyée'),
-            backgroundColor: Color(0xFF16A34A),
-            behavior: SnackBarBehavior.floating,
-          ));
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erreur envoi : $e')),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _sending = false);
-    }
+  String _label(String key) {
+    final p = key.split('-');
+    final y = int.parse(p[0]);
+    final m = int.parse(p[1]);
+    final raw = DateFormat('MMMM yyyy', 'fr_FR').format(DateTime(y, m));
+    return raw.isEmpty ? raw : '${raw[0].toUpperCase()}${raw.substring(1)}';
   }
 
   @override
   Widget build(BuildContext context) {
-    final inv = widget.invoice;
-    final dateFmt = DateFormat('dd MMMM yyyy', 'fr_FR');
-    final euroFmt = NumberFormat.currency(
-        locale: 'fr_FR', symbol: '€', decimalDigits: 2);
-    final primary = Theme.of(context).colorScheme.primary;
+    final grouped = _group();
+    final keys = grouped.keys.toList();
 
-    return Container(
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      padding: EdgeInsets.fromLTRB(
-          24, 16, 24, MediaQuery.of(context).padding.bottom + 24),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // ── Handle ──
-          Container(
-            width: 40,
-            height: 4,
-            margin: const EdgeInsets.only(bottom: 20),
-            decoration: BoxDecoration(
-              color: const Color(0xFFE5E7EB),
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-
-          // ── Header : client + date + numéro & statut ──
-          Text(
-            inv.clientName ?? 'Client',
-            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            dateFmt.format(inv.createdAt.toLocal()),
-            style: const TextStyle(fontSize: 14, color: Color(0xFF6B7280)),
-          ),
-          const SizedBox(height: 4),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
+    return ListView.builder(
+      padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
+      itemCount: keys.length,
+      itemBuilder: (context, gi) {
+        final key = keys[gi];
+        final list = grouped[key]!;
+        return Padding(
+          padding: EdgeInsets.only(top: gi == 0 ? 0 : 22),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                'N° ${inv.invoiceNumber}',
-                style: const TextStyle(fontSize: 12, color: Color(0xFF9CA3AF)),
-              ),
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(
-                  color: _sheetStatusColor(inv).withAlpha(20),
-                  borderRadius: BorderRadius.circular(10),
-                ),
+              Padding(
+                padding: const EdgeInsets.only(left: 4, bottom: 10),
                 child: Text(
-                  inv.displayStatus,
-                  style: TextStyle(
+                  _label(key).toUpperCase(),
+                  style: GoogleFonts.inter(
                     fontSize: 11,
                     fontWeight: FontWeight.w700,
-                    color: _sheetStatusColor(inv),
+                    color: CF.faint(context),
+                    letterSpacing: 1.2,
                   ),
+                ),
+              ),
+              Container(
+                decoration: BoxDecoration(
+                  color: CF.surface(context),
+                  borderRadius: BorderRadius.circular(CFRadius.xl),
+                  border: Border.all(color: CF.border(context), width: 0.5),
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: Column(
+                  children: [
+                    for (int i = 0; i < list.length; i++) ...[
+                      if (i > 0)
+                        Divider(
+                          height: 0.5,
+                          thickness: 0.5,
+                          color: CF.border(context),
+                        ),
+                      _InvoiceRow(
+                        invoice: list[i],
+                        onTap: () => onTap(list[i]),
+                      ),
+                    ],
+                  ],
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 20),
-
-          // ── Montant ──
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: primary.withAlpha(15),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Column(
-              children: [
-                const Text('Total HT',
-                    style: TextStyle(fontSize: 12, color: Color(0xFF6B7280))),
-                const SizedBox(height: 4),
-                Text(
-                  euroFmt.format(inv.totalAmount),
-                  style: TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.w800,
-                      color: primary),
-                ),
-                const SizedBox(height: 4),
-                const Text('TVA non applicable — art. 293 B CGI',
-                    style: TextStyle(fontSize: 10, color: Color(0xFF9CA3AF))),
-              ],
-            ),
-          ),
-          const SizedBox(height: 24),
-
-          // ── Actions ──
-
-          // Voir le PDF
-          _actionButton(
-            context: context,
-            icon: _loadingPdf ? null : LucideIcons.fileText,
-            label: 'Voir le PDF',
-            color: const Color(0xFF305DA8),
-            loading: _loadingPdf,
-            onTap: _loadingPdf ? null : () => _viewPdf(inv),
-          ),
-          const SizedBox(height: 10),
-
-          // Partager la facture (share sheet natif)
-          if (inv.status != 'paid' && inv.status != 'cancelled')
-            _actionButton(
-              context: context,
-              icon: _sending ? null : LucideIcons.share2,
-              label: 'Partager',
-              color: const Color(0xFF305DA8),
-              loading: _sending,
-              onTap: _sending ? null : () => _sendEmail(inv),
-            ),
-
-          if (inv.status == 'draft') ...[
-            const SizedBox(height: 10),
-            _actionButton(
-              context: context,
-              icon: LucideIcons.send,
-              label: 'Marquer comme envoyée',
-              color: const Color(0xFF6B7280),
-              onTap: () {
-                ref
-                    .read(invoicesProvider.notifier)
-                    .updateStatus(inv.id, 'sent');
-                Navigator.pop(context);
-              },
-            ),
-          ],
-          if (inv.status == 'draft' || inv.status == 'sent') ...[
-            const SizedBox(height: 10),
-            _actionButton(
-              context: context,
-              icon: LucideIcons.checkCircle,
-              label: 'Marquer comme payée',
-              color: const Color(0xFF16A34A),
-              onTap: () {
-                ref
-                    .read(invoicesProvider.notifier)
-                    .updateStatus(inv.id, 'paid');
-                Navigator.pop(context);
-              },
-            ),
-          ],
-        ],
-      ),
+        );
+      },
     );
   }
+}
 
-  Widget _actionButton({
-    required BuildContext context,
-    required IconData? icon,
-    required String label,
-    required Color color,
-    VoidCallback? onTap,
-    bool loading = false,
-  }) {
-    return SizedBox(
-      width: double.infinity,
-      child: OutlinedButton.icon(
-        onPressed: onTap,
-        icon: loading
-            ? SizedBox(
-                width: 18,
-                height: 18,
-                child: CircularProgressIndicator(
-                    strokeWidth: 2, color: color),
-              )
-            : Icon(icon, size: 18),
-        label: Text(label),
-        style: OutlinedButton.styleFrom(
-          foregroundColor: color,
-          side: BorderSide(color: color.withAlpha(80)),
-          minimumSize: const Size(0, 50),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+// ─── Invoice row ───────────────────────────────────────────────────────────
+
+class _InvoiceRow extends StatelessWidget {
+  final Invoice invoice;
+  final VoidCallback onTap;
+
+  const _InvoiceRow({required this.invoice, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final dateFmt = DateFormat('d MMM', 'fr_FR');
+    final amount = NumberFormat.currency(
+      locale: 'fr_FR',
+      symbol: '€',
+      decimalDigits: 2,
+    ).format(invoice.totalAmount);
+
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            _StatusDot(invoice: invoice),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    invoice.clientName ?? '—',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.inter(
+                      fontSize: CFType.subtitle,
+                      fontWeight: FontWeight.w600,
+                      color: CF.text(context),
+                      letterSpacing: -0.1,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Row(
+                    children: [
+                      Text(
+                        invoice.invoiceNumber,
+                        style: GoogleFonts.jetBrainsMono(
+                          fontSize: 11,
+                          color: CF.faint(context),
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                        ),
+                      ),
+                      Text(
+                        '  ·  ${dateFmt.format(invoice.createdAt.toLocal())}',
+                        style: GoogleFonts.inter(
+                          fontSize: 12,
+                          color: CF.muted(context),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  amount,
+                  style: GoogleFonts.jetBrainsMono(
+                    fontSize: CFType.subtitle,
+                    fontWeight: FontWeight.w600,
+                    color: CF.text(context),
+                    letterSpacing: -0.2,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
+                ),
+                const SizedBox(height: 4),
+                StatusPill(invoice: invoice),
+              ],
+            ),
+          ],
         ),
       ),
     );
   }
 }
 
-// ─── Empty state ───────────────────────────────────────────────────────────
+// ─── Status dot (left of row) ──────────────────────────────────────────────
+
+class _StatusDot extends StatelessWidget {
+  final Invoice invoice;
+  const _StatusDot({required this.invoice});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _statusColor(invoice);
+    return Container(
+      width: 10,
+      height: 10,
+      decoration: BoxDecoration(
+        color: color,
+        shape: BoxShape.circle,
+      ),
+    );
+  }
+}
+
+Color _statusColor(Invoice inv) {
+  if (inv.isOverdue) return CF.bordeaux;
+  return switch (inv.status) {
+    'paid' => CF.accentB,
+    'sent' => CF.primary,
+    'draft' => CF.g400,
+    'cancelled' => CF.g400,
+    _ => CF.g400,
+  };
+}
+
+// ─── Status pill (used in row + reused elsewhere) ──────────────────────────
+
+class StatusPill extends StatelessWidget {
+  final Invoice invoice;
+  final bool large;
+
+  const StatusPill({
+    super.key,
+    required this.invoice,
+    this.large = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final config = _pillConfig(invoice);
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: large ? 12 : 8,
+        vertical: large ? 5 : 2,
+      ),
+      decoration: BoxDecoration(
+        color: config.bg,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        config.label,
+        style: GoogleFonts.inter(
+          fontSize: large ? 12 : 10.5,
+          fontWeight: FontWeight.w700,
+          color: config.fg,
+          letterSpacing: 0.2,
+        ),
+      ),
+    );
+  }
+}
+
+({String label, Color bg, Color fg}) _pillConfig(Invoice inv) {
+  if (inv.isOverdue) {
+    return (label: 'En retard', bg: CF.overdueBg, fg: CF.overdueFg);
+  }
+  switch (inv.status) {
+    case 'paid':
+      return (label: 'Payée', bg: CF.paidBg, fg: CF.paidFg);
+    case 'sent':
+      return (
+        label: 'À encaisser',
+        bg: CF.primary.withValues(alpha: 0.10),
+        fg: CF.primary,
+      );
+    case 'draft':
+      return (label: 'À envoyer', bg: CF.pendingBg, fg: CF.pendingFg);
+    case 'cancelled':
+      return (label: 'Annulée', bg: CF.pendingBg, fg: CF.pendingFg);
+    default:
+      return (label: inv.status, bg: CF.pendingBg, fg: CF.pendingFg);
+  }
+}
+
+// ─── Empty states ──────────────────────────────────────────────────────────
 
 class _EmptyInvoices extends StatelessWidget {
   const _EmptyInvoices();
 
   @override
   Widget build(BuildContext context) {
-    return const Center(
+    return Center(
       child: Padding(
-        padding: EdgeInsets.all(32),
+        padding: const EdgeInsets.symmetric(horizontal: 40),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(LucideIcons.fileText,
-                size: 64, color: Color(0xFF9CA3AF)),
-            SizedBox(height: 16),
-            Text('Aucune facture',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
-            SizedBox(height: 8),
+            Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                color: CF.surfaceAlt(context),
+                shape: BoxShape.circle,
+              ),
+              alignment: Alignment.center,
+              child: Icon(LucideIcons.fileText, size: 26, color: CF.faint(context)),
+            ),
+            const SizedBox(height: 16),
             Text(
-              'Générez votre première facture depuis l\'écran Sessions d\'un projet.',
+              'Aucune facture',
+              style: GoogleFonts.inter(
+                fontSize: CFType.h3,
+                fontWeight: FontWeight.w700,
+                color: CF.text(context),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Génère ta première facture depuis un projet ou l\'accueil.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: Color(0xFF6B7280)),
+              style: GoogleFonts.inter(
+                fontSize: 13.5,
+                color: CF.muted(context),
+                height: 1.4,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _EmptyFiltered extends StatelessWidget {
+  const _EmptyFiltered();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 40),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(LucideIcons.searchX, size: 32, color: CF.faint(context)),
+            const SizedBox(height: 12),
+            Text(
+              'Aucune facture ne correspond',
+              style: GoogleFonts.inter(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                color: CF.muted(context),
+              ),
             ),
           ],
         ),
