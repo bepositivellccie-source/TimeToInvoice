@@ -7,6 +7,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/models/invoice.dart';
 import '../../core/providers/invoices_provider.dart';
 import '../../core/theme/cf_palette.dart';
+import '../../core/widgets/test_mode_banner.dart';
 import 'invoice_detail_screen.dart';
 
 /// Liste des factures — refonte ChronoFacture v2.
@@ -71,6 +72,7 @@ class _InvoicesHistoryScreenState
         bottom: false,
         child: Column(
           children: [
+            const TestModeBanner(),
             const _Header(),
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
@@ -423,6 +425,10 @@ class _InvoiceRow extends StatelessWidget {
                           color: CF.muted(context),
                         ),
                       ),
+                      if (invoice.isTest) ...[
+                        const SizedBox(width: 8),
+                        const _TestBadge(),
+                      ],
                     ],
                   ),
                 ],
@@ -586,6 +592,32 @@ class _EmptyInvoices extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Test badge ─────────────────────────────────────────────────────────────
+
+class _TestBadge extends StatelessWidget {
+  const _TestBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+      decoration: BoxDecoration(
+        color: CF.testBg,
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        'TEST',
+        style: GoogleFonts.inter(
+          fontSize: 9.5,
+          fontWeight: FontWeight.w800,
+          color: CF.testFg,
+          letterSpacing: 0.6,
         ),
       ),
     );

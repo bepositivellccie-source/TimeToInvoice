@@ -72,10 +72,32 @@ Future<Uint8List> buildInvoicePdf(InvoiceData inv) async {
       pw.TextStyle(font: regular, fontSize: sz, color: c);
   pw.TextStyle b(double sz, {PdfColor c = _gray900}) =>
       pw.TextStyle(font: bold, fontSize: sz, color: c);
+  // Filigrane TEST si mode test actif (chantier 8)
+  pw.BuildCallback? testWatermark;
+  if (inv.isTest) {
+    testWatermark = (ctx) => pw.Center(
+          child: pw.Transform.rotate(
+            angle: -0.6,
+            child: pw.Text(
+              'TEST',
+              style: pw.TextStyle(
+                font: bold,
+                fontSize: 200,
+                color: const PdfColor.fromInt(0x33F59E0B),
+                fontWeight: pw.FontWeight.bold,
+              ),
+            ),
+          ),
+        );
+  }
+
   doc.addPage(
     pw.MultiPage(
-      pageFormat: PdfPageFormat.a4,
-      margin: const pw.EdgeInsets.fromLTRB(40, 36, 40, 48),
+      pageTheme: pw.PageTheme(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.fromLTRB(40, 36, 40, 48),
+        buildBackground: testWatermark,
+      ),
       footer: (ctx) => _footer(ctx, regular, _gray500),
       build: (ctx) => [
         // ── BANDE BLEUE TITRE ────────────────────────────────────────────

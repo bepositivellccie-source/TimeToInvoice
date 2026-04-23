@@ -14,6 +14,10 @@ class Invoice {
   final String? sentVia; // 'email' | 'WhatsApp' | 'autre'
   final String? sentTo;
 
+  /// Mode test : facture marquée `is_test=true` côté DB.
+  /// Exclue du quota freemium et taggée d'un filigrane "TEST" dans le PDF.
+  final bool isTest;
+
   // Joined from clients table OR stored denormalized
   final String? clientName;
   final String? clientEmail;
@@ -33,6 +37,7 @@ class Invoice {
     this.sentAt,
     this.sentVia,
     this.sentTo,
+    this.isTest = false,
     this.clientName,
     this.clientEmail,
   });
@@ -87,6 +92,7 @@ class Invoice {
           : null,
       sentVia: json['sent_via'] as String?,
       sentTo: json['sent_to'] as String?,
+      isTest: json['is_test'] as bool? ?? false,
       clientName: json['client_name'] as String? ?? joinedName,
       clientEmail: joinedEmail,
     );

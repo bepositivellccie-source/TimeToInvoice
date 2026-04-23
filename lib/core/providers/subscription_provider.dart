@@ -133,11 +133,13 @@ final monthlyInvoiceCountProvider = FutureProvider<int>((ref) async {
   final firstOfNext =
       DateTime(now.year, now.month + 1, 1).toUtc().toIso8601String();
 
+  // Mode test (chantier 8) : `is_test=true` exclu du compteur quota.
   final data = await supabase
       .from('invoices')
       .select('id')
       .gte('created_at', firstOfMonth)
-      .lt('created_at', firstOfNext);
+      .lt('created_at', firstOfNext)
+      .eq('is_test', false);
 
   return (data as List).length;
 });

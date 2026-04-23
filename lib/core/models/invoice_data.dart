@@ -42,6 +42,9 @@ class InvoiceData {
   /// Taux TVA en % (0 = franchise art. 293 B, 20 = assujetti standard).
   final double tvaRate;
 
+  /// Mode test : ajoute un filigrane « TEST » diagonal sur chaque page.
+  final bool isTest;
+
   const InvoiceData({
     required this.invoiceNumber,
     required this.issueDate,
@@ -57,6 +60,7 @@ class InvoiceData {
     this.paymentDays = 30,
     this.currency = 'EUR',
     this.tvaRate = 0,
+    this.isTest = false,
   });
 
   double get totalHT => lines.fold(0.0, (s, l) => s + l.amount);

@@ -11,6 +11,7 @@ import '../../core/providers/projects_provider.dart';
 import '../../core/providers/session_bar_provider.dart';
 import '../../core/providers/sessions_provider.dart';
 import '../../core/theme/cf_palette.dart';
+import '../../core/widgets/test_mode_banner.dart';
 import 'timer_notifier.dart';
 
 /// Écran Chrono — refonte design ChronoFacture v2.
@@ -66,6 +67,7 @@ class _ChronoBody extends ConsumerWidget {
 
     return Column(
       children: [
+        const TestModeBanner(),
         // ── Sélecteur projet ────────────────────────────────────────────
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),

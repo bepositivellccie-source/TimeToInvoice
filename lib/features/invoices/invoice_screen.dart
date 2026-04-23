@@ -19,6 +19,7 @@ import '../../core/providers/profile_provider.dart';
 import '../../core/providers/project_billing_status_provider.dart';
 import '../../core/providers/projects_provider.dart';
 import '../../core/providers/sessions_provider.dart';
+import '../../core/providers/test_mode_provider.dart';
 import '../../core/theme/cf_palette.dart';
 import '../../core/utils/invoice_number.dart';
 import '../../core/utils/invoice_pdf.dart';
@@ -251,7 +252,10 @@ class _InvoiceScreenState extends ConsumerState<InvoiceScreen> {
     String? buyerSiret,
     String? buyerEmail,
   }) async {
-    if (!kAdminMode) {
+    final isTest = ref.read(testModeProvider);
+
+    // Mode test : exclu du quota freemium (chantier 8)
+    if (!kAdminMode && !isTest) {
       if (!await checkInvoiceQuota(context, ref)) return;
     }
 
@@ -270,6 +274,7 @@ class _InvoiceScreenState extends ConsumerState<InvoiceScreen> {
         buyerAddress: buyerAddress,
         buyerSiret: buyerSiret,
         buyerEmail: buyerEmail,
+        isTest: isTest,
       );
 
       final bytes = await buildInvoicePdf(data);
@@ -310,6 +315,7 @@ class _InvoiceScreenState extends ConsumerState<InvoiceScreen> {
             'issued_at': _billingDate.toIso8601String(),
             'due_at': _dueDate.toIso8601String(),
             'client_name': buyerName,
+            'is_test': isTest,
           })
           .select()
           .single();
@@ -367,6 +373,7 @@ class _InvoiceScreenState extends ConsumerState<InvoiceScreen> {
     String? buyerAddress,
     String? buyerSiret,
     String? buyerEmail,
+    bool isTest = false,
   }) {
     final dateFmt = DateFormat('dd/MM/yyyy', 'fr_FR');
     final selectedSessions =
@@ -407,6 +414,7 @@ class _InvoiceScreenState extends ConsumerState<InvoiceScreen> {
       lines: lines,
       currency: currency,
       tvaRate: tvaRate,
+      isTest: isTest,
     );
   }
 }

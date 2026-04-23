@@ -267,14 +267,23 @@ class _Header extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 2),
-                Text(
-                  invoice?.invoiceNumber ?? '—',
-                  style: GoogleFonts.jetBrainsMono(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: CF.text(context),
-                    letterSpacing: -0.2,
-                  ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      invoice?.invoiceNumber ?? '—',
+                      style: GoogleFonts.jetBrainsMono(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: CF.text(context),
+                        letterSpacing: -0.2,
+                      ),
+                    ),
+                    if (invoice?.isTest == true) ...[
+                      const SizedBox(width: 8),
+                      const _TestBadge(),
+                    ],
+                  ],
                 ),
               ],
             ),
@@ -289,6 +298,32 @@ class _Header extends StatelessWidget {
           else
             const SizedBox(width: 48),
         ],
+      ),
+    );
+  }
+}
+
+// ─── Test badge ─────────────────────────────────────────────────────────────
+
+class _TestBadge extends StatelessWidget {
+  const _TestBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+      decoration: BoxDecoration(
+        color: CF.testBg,
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        'TEST',
+        style: GoogleFonts.inter(
+          fontSize: 9.5,
+          fontWeight: FontWeight.w800,
+          color: CF.testFg,
+          letterSpacing: 0.6,
+        ),
       ),
     );
   }
