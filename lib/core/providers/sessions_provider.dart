@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/session.dart';
+import 'projects_provider.dart';
 import 'supabase_provider.dart';
 
 /// Sessions pour un projet donné — lecture seule (le Timer gère l'écriture).
@@ -74,3 +75,65 @@ final projectsTotalSecondsProvider =
   }
   return result;
 });
+
+/// N dernières sessions terminées (toutes projets confondus) pour l'Accueil.
+final recentSessionsProvider =
+    FutureProvider<List<WorkSession>>((ref) async {
+  final supabase = ref.watch(supabaseClientProvider);
+  final data = await supabase
+      .from('sessions')
+      .select()
+      .not('ended_at', 'is', null)
+      .order('started_at', ascending: false)
+      .limit(5);
+  return (data as List).map((e) => WorkSession.fromJson(e)).toList();
+});
+
+/// KPI "cette semaine" : temps total + montant facturable + numéro ISO de la semaine.
+typedef WeeklyStats = ({Duration worked, double billable, int weekNumber});
+
+final weeklyStatsProvider = FutureProvider<WeeklyStats>((ref) async {
+  final supabase = ref.watch(supabaseClientProvider);
+  final projects = await ref.watch(projectsProvider.future);
+  final rateById = {for (final p in projects) p.id: p.hourlyRate};
+
+  final now = DateTime.now();
+  final mondayOffset = now.weekday - 1; // weekday: 1 = lundi
+  final monday = DateTime(now.year, now.month, now.day)
+      .subtract(Duration(days: mondayOffset));
+  final mondayUtc = monday.toUtc();
+
+  final data = await supabase
+      .from('sessions')
+      .select('project_id, duration_seconds, started_at')
+      .not('ended_at', 'is', null)
+      .gte('started_at', mondayUtc.toIso8601String());
+
+  int totalSecs = 0;
+  double billable = 0;
+  for (final row in (data as List)) {
+    final secs = (row['duration_seconds'] as int?) ?? 0;
+    totalSecs += secs;
+    final pid = row['project_id'] as String?;
+    final rate = rateById[pid] ?? 0.0;
+    billable += (secs / 3600.0) * rate;
+  }
+
+  return (
+    worked: Duration(seconds: totalSecs),
+    billable: billable,
+    weekNumber: _isoWeekNumber(now),
+  );
+});
+
+int _isoWeekNumber(DateTime date) {
+  final thursday =
+      date.add(Duration(days: 4 - (date.weekday == 7 ? 7 : date.weekday)));
+  final firstThursday = DateTime(thursday.year, 1, 4);
+  final firstThursdayWeekday =
+      firstThursday.weekday == 7 ? 7 : firstThursday.weekday;
+  final firstWeekStart =
+      firstThursday.subtract(Duration(days: firstThursdayWeekday - 1));
+  final diff = thursday.difference(firstWeekStart).inDays;
+  return (diff / 7).floor() + 1;
+}
