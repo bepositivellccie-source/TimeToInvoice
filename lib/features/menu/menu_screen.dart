@@ -5,13 +5,15 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../core/providers/subscription_provider.dart';
+import '../../core/providers/test_mode_provider.dart';
 import '../../core/theme/cf_palette.dart';
 
-/// Placeholder pour le 4e onglet Menu — sera enrichi au chantier 4.
-/// Pour l'instant on expose juste les liens vers les écrans déplacés
-/// hors du shell (Clients, Projets, PDFs, Paramètres, Profil).
+/// Menu — 4e onglet. Hub des données, outils et compte utilisateur.
 class MenuScreen extends ConsumerWidget {
   const MenuScreen({super.key});
+
+  static const _appVersion = 'v 1.0.0';
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -19,17 +21,19 @@ class MenuScreen extends ConsumerWidget {
     final fullName =
         user?.userMetadata?['full_name'] as String? ?? user?.email ?? '';
     final initials = _initials(fullName);
+    final testModeOn = ref.watch(testModeProvider);
+    final isPro = ref.watch(subscriptionProvider).isPro;
 
     return Scaffold(
       backgroundColor: CF.bg(context),
       body: SafeArea(
         bottom: false,
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+          padding: const EdgeInsets.only(bottom: 28),
           children: [
             // ── Title ────────────────────────────────────────────
             Padding(
-              padding: const EdgeInsets.fromLTRB(4, 0, 4, 18),
+              padding: const EdgeInsets.fromLTRB(24, 10, 24, 0),
               child: Text(
                 'Menu',
                 style: GoogleFonts.inter(
@@ -42,17 +46,21 @@ class MenuScreen extends ConsumerWidget {
             ),
 
             // ── Account card ─────────────────────────────────────
-            _AccountCard(
-              fullName: fullName.isEmpty ? 'Mon compte' : fullName,
-              initials: initials,
-              email: user?.email ?? '',
-              onTap: () => context.push('/profile'),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
+              child: _AccountCard(
+                fullName: fullName.isEmpty ? 'Mon compte' : fullName,
+                initials: initials,
+                email: user?.email ?? '',
+                onTap: () => context.push('/profile'),
+              ),
             ),
 
+            // ── MES DONNÉES ──────────────────────────────────────
             const _SectionLabel('Mes données'),
             _MenuCard(children: [
               _MenuRow(
-                icon: LucideIcons.users,
+                icon: LucideIcons.user,
                 label: 'Clients',
                 onTap: () => context.push('/clients'),
               ),
@@ -65,23 +73,136 @@ class MenuScreen extends ConsumerWidget {
               _Divider(),
               _MenuRow(
                 icon: LucideIcons.fileText,
-                label: 'Mes PDFs',
-                onTap: () => context.push('/pdfs'),
+                label: 'Mes factures',
+                onTap: () => context.go('/invoices'),
               ),
             ]),
 
+            // ── OUTILS ───────────────────────────────────────────
+            const _SectionLabel('Outils'),
+            _MenuCard(children: [
+              _MenuRow(
+                icon: LucideIcons.flaskConical,
+                label: 'Mode test',
+                trailing: _Toggle(
+                  value: testModeOn,
+                  onChanged: (v) =>
+                      ref.read(testModeProvider.notifier).setEnabled(v),
+                ),
+                showChevron: false,
+              ),
+              _Divider(),
+              _MenuRow(
+                icon: LucideIcons.download,
+                label: 'Export comptable',
+                onTap: () => _showComingSoon(context),
+              ),
+            ]),
+
+            // ── COMPTE ───────────────────────────────────────────
             const _SectionLabel('Compte'),
             _MenuCard(children: [
+              _MenuRow(
+                icon: LucideIcons.crown,
+                label: 'Abonnement',
+                trailing: isPro ? const _ProBadge() : null,
+                onTap: () => _showComingSoon(context),
+              ),
+              _Divider(),
               _MenuRow(
                 icon: LucideIcons.settings,
                 label: 'Paramètres',
                 onTap: () => context.push('/settings'),
               ),
+              _Divider(),
+              _MenuRow(
+                icon: LucideIcons.helpCircle,
+                label: 'Aide',
+                onTap: () => _showComingSoon(context),
+              ),
             ]),
+
+            // ── Sign out ─────────────────────────────────────────
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 32, 20, 8),
+              child: Center(
+                child: TextButton(
+                  onPressed: () => _confirmSignOut(context),
+                  style: TextButton.styleFrom(
+                    foregroundColor: CF.bordeaux,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 8),
+                    minimumSize: const Size(0, 36),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: Text(
+                    'Se déconnecter',
+                    style: GoogleFonts.inter(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: -0.1,
+                      color: CF.bordeaux,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+
+            // ── Version footer ──────────────────────────────────
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Center(
+                child: Text(
+                  _appVersion,
+                  style: GoogleFonts.jetBrainsMono(
+                    fontSize: 11,
+                    color: CF.faint(context),
+                    letterSpacing: 0.4,
+                  ),
+                ),
+              ),
+            ),
           ],
         ),
       ),
     );
+  }
+
+  Future<void> _confirmSignOut(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Se déconnecter ?'),
+        content: const Text(
+            'Vous reviendrez à l\'écran de connexion. Vos données restent en sécurité.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Annuler'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: CF.bordeaux),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Déconnexion'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      await Supabase.instance.client.auth.signOut();
+    }
+  }
+
+  void _showComingSoon(BuildContext context) {
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(
+        const SnackBar(
+          content: Text('Bientôt disponible'),
+          behavior: SnackBarBehavior.floating,
+          duration: Duration(seconds: 2),
+        ),
+      );
   }
 
   static String _initials(String name) {
@@ -197,7 +318,7 @@ class _SectionLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 22, 8, 10),
+      padding: const EdgeInsets.fromLTRB(28, 22, 28, 10),
       child: Text(
         text.toUpperCase(),
         style: GoogleFonts.inter(
@@ -217,14 +338,17 @@ class _MenuCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: CF.surface(context),
-        borderRadius: BorderRadius.circular(CFRadius.xl),
-        border: Border.all(color: CF.border(context), width: 0.5),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Container(
+        decoration: BoxDecoration(
+          color: CF.surface(context),
+          borderRadius: BorderRadius.circular(CFRadius.xl),
+          border: Border.all(color: CF.border(context), width: 0.5),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Column(children: children),
       ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(children: children),
     );
   }
 }
@@ -245,47 +369,130 @@ class _Divider extends StatelessWidget {
 class _MenuRow extends StatelessWidget {
   final IconData icon;
   final String label;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
+  final Widget? trailing;
+  final bool showChevron;
 
   const _MenuRow({
     required this.icon,
     required this.label,
-    required this.onTap,
+    this.onTap,
+    this.trailing,
+    this.showChevron = true,
   });
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-        child: Row(
-          children: [
-            Container(
-              width: 34,
-              height: 34,
-              decoration: BoxDecoration(
-                color: CF.surfaceAlt(context),
-                borderRadius: BorderRadius.circular(9),
-              ),
-              alignment: Alignment.center,
-              child: Icon(icon, size: 19, color: CF.muted(context)),
+    final content = Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+      child: Row(
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: CF.surfaceAlt(context),
+              borderRadius: BorderRadius.circular(9),
             ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Text(
-                label,
-                style: GoogleFonts.inter(
-                  fontSize: CFType.subtitle,
-                  fontWeight: FontWeight.w500,
-                  color: CF.text(context),
-                  letterSpacing: -0.1,
-                ),
+            alignment: Alignment.center,
+            child: Icon(icon, size: 19, color: CF.muted(context)),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Text(
+              label,
+              style: GoogleFonts.inter(
+                fontSize: CFType.subtitle,
+                fontWeight: FontWeight.w500,
+                color: CF.text(context),
+                letterSpacing: -0.1,
               ),
             ),
+          ),
+          if (trailing != null) ...[
+            trailing!,
+            if (showChevron) const SizedBox(width: 8),
+          ],
+          if (showChevron)
             Icon(LucideIcons.chevronRight,
                 size: 18, color: CF.faint(context)),
-          ],
+        ],
+      ),
+    );
+
+    if (onTap == null) return content;
+    return InkWell(onTap: onTap, child: content);
+  }
+}
+
+// ─── Toggle ─────────────────────────────────────────────────────────────────
+
+class _Toggle extends StatelessWidget {
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  const _Toggle({required this.value, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => onChanged(!value),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        width: 42,
+        height: 26,
+        decoration: BoxDecoration(
+          color: value ? CF.accentB : CF.border(context),
+          borderRadius: BorderRadius.circular(13),
+        ),
+        child: AnimatedAlign(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOut,
+          alignment: value ? Alignment.centerRight : Alignment.centerLeft,
+          child: Padding(
+            padding: const EdgeInsets.all(2),
+            child: Container(
+              width: 22,
+              height: 22,
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: Color(0x26000000),
+                    blurRadius: 3,
+                    offset: Offset(0, 1),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Pro badge ──────────────────────────────────────────────────────────────
+
+class _ProBadge extends StatelessWidget {
+  const _ProBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: CF.accentB.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        'Pro',
+        style: GoogleFonts.inter(
+          color: CF.accentB,
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.3,
         ),
       ),
     );
