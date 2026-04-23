@@ -20,7 +20,7 @@ import 'pdf_viewer_screen.dart';
 /// - Header maison (back + invoice number + status pill)
 /// - Hero card client + montant
 /// - Récap (émise / échéance / envoi)
-/// - Sticky bottom : "Voir le PDF" + "Marquer comme payée"
+/// - Sticky bottom : "Voir le PDF" + "Encaisser"
 class InvoiceDetailScreen extends ConsumerStatefulWidget {
   final String invoiceId;
 
@@ -105,7 +105,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
   Future<void> _markPaid(Invoice inv) async {
     try {
       await ref.read(invoicesProvider.notifier).updateStatus(inv.id, 'paid');
-      if (mounted) _showSnack('Facture marquée payée', success: true);
+      if (mounted) _showSnack('Facture encaissée', success: true);
     } catch (e) {
       if (mounted) _showSnack('Erreur : $e');
     }
@@ -644,8 +644,8 @@ class _StickyActions extends StatelessWidget {
           if (isPaid)
             Expanded(
               child: _SecondaryButton(
-                label: 'Partager',
-                icon: LucideIcons.share2,
+                label: 'Envoyer',
+                icon: LucideIcons.send,
                 loading: sharing,
                 onTap: sharing ? null : onShare,
               ),
@@ -653,7 +653,7 @@ class _StickyActions extends StatelessWidget {
           else
             Expanded(
               child: _PrimaryButton(
-                label: 'Marquer comme payée',
+                label: 'Encaisser',
                 color: CF.accentB,
                 icon: LucideIcons.checkCircle,
                 onTap: onPay,

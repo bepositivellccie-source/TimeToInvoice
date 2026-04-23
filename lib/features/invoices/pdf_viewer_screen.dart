@@ -58,7 +58,7 @@ class _PdfViewerScreenState extends ConsumerState<PdfViewerScreen> {
   Future<void> _markPaid(Invoice inv) async {
     try {
       await ref.read(invoicesProvider.notifier).updateStatus(inv.id, 'paid');
-      if (mounted) _showSnack('Facture marquée payée', success: true);
+      if (mounted) _showSnack('Facture encaissée', success: true);
     } catch (e) {
       if (mounted) _showSnack('Erreur : $e');
     }
@@ -243,8 +243,8 @@ class _BottomBar extends StatelessWidget {
         children: [
           Expanded(
             child: _Btn(
-              label: 'Partager',
-              icon: LucideIcons.share2,
+              label: 'Envoyer',
+              icon: LucideIcons.send,
               color: CF.primary,
               loading: sharing,
               onTap: sharing ? null : onShare,
@@ -254,7 +254,7 @@ class _BottomBar extends StatelessWidget {
             const SizedBox(width: 10),
             Expanded(
               child: _Btn(
-                label: 'Marquer payée',
+                label: 'Encaisser',
                 icon: LucideIcons.checkCircle,
                 color: CF.accentB,
                 onTap: onPay,
