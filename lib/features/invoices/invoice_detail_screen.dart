@@ -82,11 +82,18 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
         if (mounted) _showSnack('PDF non disponible');
         return;
       }
-      await Share.shareXFiles(
+      final result = await Share.shareXFiles(
         [XFile(file.path, mimeType: 'application/pdf')],
         subject: 'Facture ${inv.invoiceNumber}',
         text: 'Bonjour,\nVeuillez trouver ci-joint la facture ${inv.invoiceNumber}.',
       );
+
+      if (result.status != ShareResultStatus.success) {
+        // Utilisateur a annulé ou échec — ne rien marquer en DB
+        if (mounted) _showSnack('Partage annulé');
+        return;
+      }
+
       if (mounted) {
         await ref.read(invoicesProvider.notifier).markAsSentByNumber(
               inv.invoiceNumber,

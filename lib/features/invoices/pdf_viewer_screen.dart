@@ -38,11 +38,18 @@ class _PdfViewerScreenState extends ConsumerState<PdfViewerScreen> {
   Future<void> _share(Invoice inv) async {
     setState(() => _sharing = true);
     try {
-      await Share.shareXFiles(
+      final result = await Share.shareXFiles(
         [XFile(widget.filePath, mimeType: 'application/pdf')],
         subject: 'Facture ${inv.invoiceNumber}',
         text: 'Facture ${inv.invoiceNumber}',
       );
+
+      if (result.status != ShareResultStatus.success) {
+        // Utilisateur a annulé ou échec — ne rien marquer en DB
+        if (mounted) _showSnack('Partage annulé');
+        return;
+      }
+
       await ref.read(invoicesProvider.notifier).markAsSentByNumber(
             inv.invoiceNumber,
             via: 'shared',
