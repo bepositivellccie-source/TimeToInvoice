@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:path_provider/path_provider.dart';
@@ -137,6 +138,11 @@ class _PdfGalleryScreenState extends ConsumerState<PdfGalleryScreen> {
 
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(LucideIcons.arrowLeft),
+          tooltip: 'Retour',
+          onPressed: () => context.go('/menu'),
+        ),
         title: const Text(
           'Mes factures',
           style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18),

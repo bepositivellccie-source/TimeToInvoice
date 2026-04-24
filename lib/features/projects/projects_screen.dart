@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/models/project.dart';
 import '../../core/providers/client_display_mode_provider.dart';
 import '../../core/providers/projects_provider.dart';
@@ -97,6 +98,11 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen>
 
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(LucideIcons.arrowLeft),
+          tooltip: 'Retour',
+          onPressed: () => context.go('/menu'),
+        ),
         title: const Text('Projets'),
         actions: [
           IconButton(

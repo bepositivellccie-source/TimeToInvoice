@@ -70,6 +70,11 @@ class _ClientsScreenState extends ConsumerState<ClientsScreen> {
 
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(LucideIcons.arrowLeft),
+          tooltip: 'Retour',
+          onPressed: () => context.go('/menu'),
+        ),
         title: const Text('Clients'),
         actions: [
           IconButton(
