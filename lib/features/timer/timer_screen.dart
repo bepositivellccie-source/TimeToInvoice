@@ -65,46 +65,50 @@ class _ChronoBody extends ConsumerWidget {
     final selected =
         entries.where((e) => e.project.id == timerState.selectedProjectId).firstOrNull;
 
-    return Column(
-      children: [
-        const TestModeBanner(),
-        // ── Sélecteur projet ────────────────────────────────────────────
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-          child: _ProjectSelectorCard(
-            selected: selected,
-            entries: entries,
-            enabled: !isActive,
+    return SingleChildScrollView(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const TestModeBanner(),
+          // ── Sélecteur projet ────────────────────────────────────────────
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+            child: _ProjectSelectorCard(
+              selected: selected,
+              entries: entries,
+              enabled: !isActive,
+            ),
           ),
-        ),
 
-        // ── Statut session ──────────────────────────────────────────────
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
-          child: _StatusLine(
-            isActive: isActive,
-            isPaused: timerState.isPaused,
-            selected: selected,
+          // ── Statut session ──────────────────────────────────────────────
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
+            child: _StatusLine(
+              isActive: isActive,
+              isPaused: timerState.isPaused,
+              selected: selected,
+            ),
           ),
-        ),
 
-        // ── Bloc central : timer + boutons ──────────────────────────────
-        Expanded(
-          child: _ChronoCenter(
+          // ── Bloc central : timer + boutons ──────────────────────────────
+          const SizedBox(height: 40),
+          _ChronoCenter(
             timerState: timerState,
             hasProject: timerState.selectedProjectId != null,
           ),
-        ),
+          const SizedBox(height: 40),
 
-        // ── Footer : projets récents (idle) ou total/montant (actif) ───
-        if (isActive && selected != null)
-          _SessionTotalFooter(
-            durationStr: _formatHms(timerState.totalWorked),
-            amount: _amountFor(timerState.totalWorked, selected.project),
-          )
-        else
-          _RecentProjects(entries: entries),
-      ],
+          // ── Footer : projets récents (idle) ou total/montant (actif) ───
+          if (isActive && selected != null)
+            _SessionTotalFooter(
+              durationStr: _formatHms(timerState.totalWorked),
+              amount: _amountFor(timerState.totalWorked, selected.project),
+            )
+          else
+            _RecentProjects(entries: entries),
+          const SizedBox(height: 16),
+        ],
+      ),
     );
   }
 
@@ -393,8 +397,9 @@ class _ChronoCenter extends ConsumerWidget {
     final isActive = timerState.isActive;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 60, 20, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
           // ── Timer mega ────────────────────────────────────────────────
           _TimerMega(
