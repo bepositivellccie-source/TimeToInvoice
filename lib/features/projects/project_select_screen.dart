@@ -314,7 +314,7 @@ class _SectionHeader extends StatelessWidget {
             ),
             child: Text(
               '$count',
-              style: GoogleFonts.jetBrainsMono(
+              style: GoogleFonts.inter(
                 fontSize: 11,
                 fontWeight: FontWeight.w600,
                 color: CF.faint(context),
@@ -458,7 +458,7 @@ class _ProjectRow extends StatelessWidget {
                 const SizedBox(width: 10),
                 Text(
                   _fmtHHMMSS(totalSeconds),
-                  style: GoogleFonts.jetBrainsMono(
+                  style: GoogleFonts.inter(
                     fontSize: 13,
                     fontWeight: FontWeight.w500,
                     color: CF.muted(context),

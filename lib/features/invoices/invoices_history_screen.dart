@@ -412,7 +412,7 @@ class _InvoiceRow extends StatelessWidget {
                     children: [
                       Text(
                         invoice.invoiceNumber,
-                        style: GoogleFonts.jetBrainsMono(
+                        style: GoogleFonts.inter(
                           fontSize: 11,
                           color: CF.faint(context),
                           fontFeatures: const [FontFeature.tabularFigures()],
@@ -440,7 +440,7 @@ class _InvoiceRow extends StatelessWidget {
               children: [
                 Text(
                   amount,
-                  style: GoogleFonts.jetBrainsMono(
+                  style: GoogleFonts.inter(
                     fontSize: CFType.subtitle,
                     fontWeight: FontWeight.w600,
                     color: CF.text(context),

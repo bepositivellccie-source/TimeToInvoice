@@ -488,12 +488,12 @@ class _TimerMegaState extends State<_TimerMega> {
     final mainColor = widget.faded ? CF.faint(context) : CF.text(context);
     final colonColor = CF.faint(context);
 
-    final digitStyle = GoogleFonts.jetBrainsMono(
+    final digitStyle = GoogleFonts.inter(
       fontSize: 64,
       fontWeight: FontWeight.w300,
       color: mainColor,
       height: 1,
-      letterSpacing: -2,
+      letterSpacing: 0,
       fontFeatures: const [FontFeature.tabularFigures()],
     );
     final colonStyle = digitStyle.copyWith(
@@ -853,7 +853,7 @@ class _SessionTotalFooter extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   durationStr,
-                  style: GoogleFonts.jetBrainsMono(
+                  style: GoogleFonts.inter(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
                     color: CF.text(context),
@@ -869,7 +869,7 @@ class _SessionTotalFooter extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text(
                   amount,
-                  style: GoogleFonts.jetBrainsMono(
+                  style: GoogleFonts.inter(
                     fontSize: 13,
                     fontWeight: FontWeight.w500,
                     color: CF.muted(context),

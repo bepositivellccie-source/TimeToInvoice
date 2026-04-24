@@ -203,12 +203,12 @@ class _WeeklyContent extends StatelessWidget {
         ),
         const SizedBox(height: 14),
         DefaultTextStyle.merge(
-          style: GoogleFonts.jetBrainsMono(
+          style: GoogleFonts.inter(
             fontSize: 44,
             fontWeight: FontWeight.w300,
             color: Colors.white,
             height: 1,
-            letterSpacing: -2,
+            letterSpacing: 0,
             fontFeatures: const [FontFeature.tabularFigures()],
           ),
           child: Row(
@@ -273,7 +273,7 @@ class _WeeklyContent extends StatelessWidget {
               ),
               Text(
                 amount,
-                style: GoogleFonts.jetBrainsMono(
+                style: GoogleFonts.inter(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
                   color: Colors.white,
@@ -685,7 +685,7 @@ class _RecentRow extends StatelessWidget {
           ),
           Text(
             timeStr,
-            style: GoogleFonts.jetBrainsMono(
+            style: GoogleFonts.inter(
               fontSize: 14,
               fontWeight: FontWeight.w600,
               color: CF.text(context),

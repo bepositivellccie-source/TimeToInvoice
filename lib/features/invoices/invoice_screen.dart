@@ -488,7 +488,7 @@ class _Header extends StatelessWidget {
                 const SizedBox(width: 10),
                 Text(
                   '${step + 1}/$totalSteps',
-                  style: GoogleFonts.jetBrainsMono(
+                  style: GoogleFonts.inter(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
                     color: CF.muted(context),
@@ -725,7 +725,7 @@ class _Step1Sessions extends StatelessWidget {
                         const SizedBox(height: 2),
                         Text(
                           _InvoiceScreenState._fmtHHMMSS(totalSecs),
-                          style: GoogleFonts.jetBrainsMono(
+                          style: GoogleFonts.inter(
                             fontSize: 22,
                             fontWeight: FontWeight.w600,
                             color: CF.text(context),
@@ -751,7 +751,7 @@ class _Step1Sessions extends StatelessWidget {
                       Text(
                         _InvoiceScreenState._fmtAmount(
                             totalAmount, currency),
-                        style: GoogleFonts.jetBrainsMono(
+                        style: GoogleFonts.inter(
                           fontSize: 15,
                           fontWeight: FontWeight.w500,
                           color: CF.muted(context),
@@ -838,7 +838,7 @@ class _SessionRow extends StatelessWidget {
             ),
             Text(
               _InvoiceScreenState._fmtHHMMSS(session.workedSeconds),
-              style: GoogleFonts.jetBrainsMono(
+              style: GoogleFonts.inter(
                 fontSize: 16,
                 fontWeight: FontWeight.w600,
                 color: CF.text(context),
@@ -1137,7 +1137,7 @@ class _Step3Recap extends StatelessWidget {
                         const SizedBox(height: 2),
                         Text(
                           'En attente de numéro',
-                          style: GoogleFonts.jetBrainsMono(
+                          style: GoogleFonts.inter(
                             fontSize: 13,
                             fontWeight: FontWeight.w600,
                             color: CF.muted(context),
@@ -1225,7 +1225,7 @@ class _Step3Recap extends StatelessWidget {
               ),
               Text(
                 _InvoiceScreenState._fmtAmount(totalAmount, currency),
-                style: GoogleFonts.jetBrainsMono(
+                style: GoogleFonts.inter(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
                   color: CF.text(context),
@@ -1267,7 +1267,7 @@ class _MiniPdfThumb extends StatelessWidget {
               const Icon(LucideIcons.fileText, size: 14, color: CF.chrono),
               Text(
                 'F-2026',
-                style: GoogleFonts.jetBrainsMono(
+                style: GoogleFonts.inter(
                   fontSize: 5,
                   color: CF.g400,
                   letterSpacing: 0.3,
@@ -1332,7 +1332,7 @@ class _RecapRow extends StatelessWidget {
           Text(
             value,
             style: tabular
-                ? GoogleFonts.jetBrainsMono(
+                ? GoogleFonts.inter(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
                     color: CF.text(context),

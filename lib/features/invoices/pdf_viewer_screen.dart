@@ -152,7 +152,7 @@ class _Header extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   invoice.invoiceNumber,
-                  style: GoogleFonts.jetBrainsMono(
+                  style: GoogleFonts.inter(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
                     color: CF.text(context),

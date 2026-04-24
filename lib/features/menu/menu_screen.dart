@@ -154,7 +154,7 @@ class MenuScreen extends ConsumerWidget {
               child: Center(
                 child: Text(
                   _appVersion,
-                  style: GoogleFonts.jetBrainsMono(
+                  style: GoogleFonts.inter(
                     fontSize: 11,
                     color: CF.faint(context),
                     letterSpacing: 0.4,
