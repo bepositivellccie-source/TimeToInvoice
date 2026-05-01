@@ -63,6 +63,7 @@ class AppShell extends ConsumerWidget {
               children: [
                 _NavItem(
                   icon: LucideIcons.home,
+                  selectedIcon: Icons.home,
                   label: 'Accueil',
                   isSelected: currentIdx == 0,
                   onTap: () => navigationShell.goBranch(0,
@@ -70,6 +71,7 @@ class AppShell extends ConsumerWidget {
                 ),
                 _NavItem(
                   icon: LucideIcons.timer,
+                  selectedIcon: Icons.timer,
                   label: 'Chrono',
                   isSelected: currentIdx == 1,
                   onTap: () => navigationShell.goBranch(1,
@@ -77,6 +79,7 @@ class AppShell extends ConsumerWidget {
                 ),
                 _NavItem(
                   icon: LucideIcons.fileText,
+                  selectedIcon: Icons.description,
                   label: 'Factures',
                   isSelected: currentIdx == 2,
                   onTap: () => navigationShell.goBranch(2,
@@ -102,12 +105,14 @@ class AppShell extends ConsumerWidget {
 
 class _NavItem extends StatelessWidget {
   final IconData icon;
+  final IconData? selectedIcon;
   final String label;
   final bool isSelected;
   final VoidCallback onTap;
 
   const _NavItem({
     required this.icon,
+    this.selectedIcon,
     required this.label,
     required this.isSelected,
     required this.onTap,
@@ -116,13 +121,15 @@ class _NavItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = isSelected ? CF.primary : CF.faint(context);
+    final displayIcon =
+        isSelected && selectedIcon != null ? selectedIcon! : icon;
     return Expanded(
       child: InkWell(
         onTap: onTap,
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 24, color: color),
+            Icon(displayIcon, size: 24, color: color),
             const SizedBox(height: 3),
             Text(
               label,
