@@ -94,19 +94,30 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     });
     try {
       final supabase = Supabase.instance.client;
-      if (_isSignUp) {
-        await supabase.auth.signUp(
-          email: _emailCtrl.text.trim(),
-          password: _passwordCtrl.text,
-        );
-      } else {
-        await supabase.auth.signInWithPassword(
-          email: _emailCtrl.text.trim(),
-          password: _passwordCtrl.text,
-        );
+      final email = _emailCtrl.text.trim();
+      final password = _passwordCtrl.text;
+
+      // ── Garde-fous client (pour ne pas envoyer un payload vide) ──
+      if (email.isEmpty || password.isEmpty) {
+        setState(() => _error = 'Renseignez email et mot de passe.');
+        return;
       }
-    } on AuthException catch (e) {
+      if (_isSignUp && password.length < 6) {
+        setState(() => _error = 'Mot de passe : 6 caractères minimum.');
+        return;
+      }
+
+      if (_isSignUp) {
+        await supabase.auth.signUp(email: email, password: password);
+      } else {
+        await supabase.auth.signInWithPassword(email: email, password: password);
+      }
+    } on AuthException catch (e, st) {
+      debugPrint('🔴 AuthException [${e.statusCode}] ${e.code}: ${e.message}\n$st');
       setState(() => _error = _translateError(e));
+    } catch (e, st) {
+      debugPrint('🔴 Unknown signup error: $e\n$st');
+      setState(() => _error = 'Erreur réseau ou serveur. Réessayez.');
     } finally {
       if (mounted) setState(() => _loading = false);
     }
