@@ -4,14 +4,14 @@ import 'package:flutter/material.dart';
 ///
 /// Source : `chronofacture-2/project/tokens.jsx` (Claude Design handoff
 /// du 2026-04-23). Palette « horlogerie suisse de la facture » : blanc cassé,
-/// bleu primaire #546FFF, vert validation #049A83.
+/// bleu primaire #305DA8 (logo), vert validation #049A83.
 ///
 /// Toujours utiliser ces tokens pour les nouveaux écrans plutôt que
 /// `AppColors` (legacy) ou `FigmaPrimary` (design Figma précédent).
 class CF {
   // ─── Brand ─────────────────────────────────────────────────────────────────
-  /// CTA principal (boutons, navbar actif).
-  static const Color primary = Color(0xFF546FFF);
+  /// CTA principal (boutons, navbar actif). Aligné sur le bleu du logo.
+  static const Color primary = Color(0xFF305DA8);
 
   /// Validation / dégradé vert — start.
   static const Color accentA = Color(0xFF05B89C);
