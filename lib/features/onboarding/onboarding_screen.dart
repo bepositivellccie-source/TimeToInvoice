@@ -29,11 +29,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   void _next() => setState(() => _step++);
 
   Future<void> _createClient() async {
-    await showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => const ClientFormSheet(existing: null),
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const NewClientFormScreen()),
     );
     // Avance si un client vient d'être créé
     final clients = ref.read(clientsProvider).valueOrNull ?? [];

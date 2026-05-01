@@ -56,12 +56,19 @@ class _ClientsScreenState extends ConsumerState<ClientsScreen> {
   }
 
   void _openForm(BuildContext context, Client? existing) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => ClientFormSheet(existing: existing),
-    );
+    if (existing == null) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const NewClientFormScreen()),
+      );
+    } else {
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (_) => ClientFormSheet(existing: existing),
+      );
+    }
   }
 
   @override
@@ -675,11 +682,8 @@ class _ClientFormSheetState extends ConsumerState<ClientFormSheet> {
   bool _saving = false;
   bool _optionalExpanded = false;
   late bool _editMode;
-  String? _emailError;
-  String? _siretError;
 
   bool get _isEdit => widget.existing != null;
-  bool get _isFormValid => _name.text.trim().isNotEmpty;
 
   @override
   void initState() {
@@ -767,63 +771,6 @@ class _ClientFormSheetState extends ConsumerState<ClientFormSheet> {
     }
   }
 
-  Future<void> _submitNewClient() async {
-    final emailTxt = _email.text.trim();
-    final siretTxt = _siret.text.trim();
-
-    String? newEmailErr;
-    String? newSiretErr;
-    if (emailTxt.isNotEmpty && !emailTxt.contains('@')) {
-      newEmailErr = 'Email invalide';
-    }
-    if (siretTxt.isNotEmpty &&
-        (siretTxt.length != 14 || int.tryParse(siretTxt) == null)) {
-      newSiretErr = 'SIRET : 14 chiffres requis';
-    }
-    if (newEmailErr != null || newSiretErr != null) {
-      setState(() {
-        _emailError = newEmailErr;
-        _siretError = newSiretErr;
-        if (newSiretErr != null) _optionalExpanded = true;
-      });
-      return;
-    }
-
-    setState(() {
-      _emailError = null;
-      _siretError = null;
-      _saving = true;
-    });
-
-    try {
-      await ref.read(clientsProvider.notifier).create(
-            name: _name.text.trim(),
-            firstName: _nullIfEmpty(_firstName.text),
-            company: _nullIfEmpty(_company.text),
-            siret: _nullIfEmpty(_siret.text),
-            street: _nullIfEmpty(_street.text),
-            zipCode: _nullIfEmpty(_zipCode.text),
-            city: _nullIfEmpty(_city.text),
-            phone: _nullIfEmpty(_phone.text),
-            whatsapp: _nullIfEmpty(_whatsapp.text),
-            email: _nullIfEmpty(_email.text),
-          );
-      if (mounted) Navigator.pop(context, true);
-    } catch (e, st) {
-      debugPrint('🔴 Client creation error: $e\n$st');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Erreur : $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
-  }
-
   Future<void> _openWhatsApp(String number) async {
     final clean = number.replaceAll(RegExp(r'[^\d+]'), '');
     final uri = Uri.parse('https://wa.me/$clean');
@@ -844,8 +791,6 @@ class _ClientFormSheetState extends ConsumerState<ClientFormSheet> {
 
   @override
   Widget build(BuildContext context) {
-    if (!_isEdit) return _buildCreateModal(context);
-
     final bottom = MediaQuery.of(context).viewInsets.bottom;
     final c = widget.existing;
 
@@ -947,305 +892,6 @@ class _ClientFormSheetState extends ConsumerState<ClientFormSheet> {
           ),
         ],
       ),
-    );
-  }
-
-  // ── Mode création (nouveau design ChronoFacture v2) ─────────────────────────
-
-  Widget _buildCreateModal(BuildContext context) {
-    return Container(
-      constraints:
-          BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.94),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Center(
-            child: Container(
-              width: 40,
-              height: 4,
-              margin: const EdgeInsets.only(top: 12, bottom: 8),
-              decoration: BoxDecoration(
-                color: const Color(0xFFE5E7EB),
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            child: Row(
-              children: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  style: TextButton.styleFrom(
-                    foregroundColor: const Color(0xFF6B7280),
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  ),
-                  child: Text(
-                    'Annuler',
-                    style: GoogleFonts.plusJakartaSans(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ),
-                Expanded(
-                  child: Text(
-                    'Nouveau client',
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.plusJakartaSans(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                      color: const Color(0xFF111827),
-                    ),
-                  ),
-                ),
-                TextButton(
-                  onPressed:
-                      (_isFormValid && !_saving) ? _submitNewClient : null,
-                  style: TextButton.styleFrom(
-                    foregroundColor: const Color(0xFF05B89C),
-                    disabledForegroundColor: const Color(0xFFD1D5DB),
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  ),
-                  child: Text(
-                    'Créer',
-                    style: GoogleFonts.plusJakartaSans(
-                      fontSize: 15,
-                      fontWeight:
-                          _isFormValid ? FontWeight.w700 : FontWeight.w500,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const Divider(height: 1, thickness: 0.5, color: Color(0xFFE5E7EB)),
-          Flexible(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _ClientFieldCard(
-                    icon: LucideIcons.user,
-                    focusedIcon: Icons.person,
-                    label: 'Nom du client',
-                    hint: 'Rocher, Maison Pierre, Cabinet Dupont',
-                    controller: _name,
-                    autofocus: true,
-                    focusGreen: true,
-                    textCapitalization: TextCapitalization.words,
-                    textInputAction: TextInputAction.next,
-                    onChanged: () => setState(() {}),
-                  ),
-                  const SizedBox(height: 20),
-                  _ClientFieldCard(
-                    icon: LucideIcons.mail,
-                    label: 'Email · optionnel',
-                    hint: 'ex : contact@cabinet-dupon',
-                    controller: _email,
-                    keyboardType: TextInputType.emailAddress,
-                    textInputAction: TextInputAction.next,
-                    errorText: _emailError,
-                    onChanged: () {
-                      final txt = _email.text.trim();
-                      final newErr = (txt.isNotEmpty && !txt.contains('@'))
-                          ? 'Email invalide'
-                          : null;
-                      if (newErr != _emailError) {
-                        setState(() => _emailError = newErr);
-                      }
-                    },
-                  ),
-                  const SizedBox(height: 28),
-                  _ExpandToggle(
-                    expanded: _optionalExpanded,
-                    onToggle: () => setState(
-                        () => _optionalExpanded = !_optionalExpanded),
-                  ),
-                  AnimatedSize(
-                    duration: const Duration(milliseconds: 200),
-                    curve: Curves.easeOut,
-                    alignment: Alignment.topCenter,
-                    child: _optionalExpanded
-                        ? _buildExpandedFields()
-                        : const SizedBox(width: double.infinity, height: 0),
-                  ),
-                  const SizedBox(height: 20),
-                ],
-              ),
-            ),
-          ),
-          Container(
-            color: Theme.of(context).colorScheme.surface,
-            padding: EdgeInsets.fromLTRB(
-              24, 0, 24,
-              24 + MediaQuery.viewPaddingOf(context).bottom,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                SizedBox(
-                  width: double.infinity,
-                  height: 56,
-                  child: ElevatedButton(
-                    onPressed:
-                        (_isFormValid && !_saving) ? _submitNewClient : null,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF05B89C),
-                      disabledBackgroundColor: const Color(0xFFD1D5DB),
-                      foregroundColor: Colors.white,
-                      disabledForegroundColor: Colors.white,
-                      elevation: 0,
-                      shape: const StadiumBorder(),
-                    ),
-                    child: _saving
-                        ? const SizedBox(
-                            width: 22,
-                            height: 22,
-                            child: CircularProgressIndicator(
-                              color: Colors.white,
-                              strokeWidth: 2,
-                            ),
-                          )
-                        : Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(LucideIcons.plus, size: 18),
-                              const SizedBox(width: 8),
-                              Text(
-                                'Créer le client',
-                                style: GoogleFonts.plusJakartaSans(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ],
-                          ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  'Le nom suffit. Vous pourrez compléter plus tard.',
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 12,
-                    color: const Color(0xFF6B7280),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildExpandedFields() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        const SizedBox(height: 16),
-        _ClientFieldCard(
-          icon: LucideIcons.user,
-          label: 'Prénom · optionnel',
-          hint: 'Sophie',
-          controller: _firstName,
-          textCapitalization: TextCapitalization.words,
-          textInputAction: TextInputAction.next,
-        ),
-        const SizedBox(height: 16),
-        _ClientFieldCard(
-          icon: LucideIcons.briefcase,
-          label: 'Société · optionnel',
-          hint: 'SARL Dupont',
-          controller: _company,
-          textCapitalization: TextCapitalization.words,
-          textInputAction: TextInputAction.next,
-        ),
-        const SizedBox(height: 16),
-        _ClientFieldCard(
-          icon: LucideIcons.phone,
-          label: 'Téléphone · optionnel',
-          hint: '06 12 34 56 78',
-          controller: _phone,
-          keyboardType: TextInputType.phone,
-          textInputAction: TextInputAction.next,
-        ),
-        const SizedBox(height: 16),
-        _ClientFieldCard(
-          icon: LucideIcons.messageCircle,
-          label: 'WhatsApp · optionnel',
-          hint: '06 12 34 56 78',
-          controller: _whatsapp,
-          keyboardType: TextInputType.phone,
-          textInputAction: TextInputAction.next,
-        ),
-        const SizedBox(height: 16),
-        _ClientFieldCard(
-          icon: LucideIcons.mapPin,
-          label: 'Rue · optionnel',
-          hint: '12 rue de la Paix',
-          controller: _street,
-          textCapitalization: TextCapitalization.words,
-          textInputAction: TextInputAction.next,
-        ),
-        const SizedBox(height: 16),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SizedBox(
-              width: 120,
-              child: _ClientFieldCard(
-                icon: LucideIcons.hash,
-                label: 'CP · optionnel',
-                hint: '75001',
-                controller: _zipCode,
-                keyboardType: TextInputType.number,
-                maxLength: 5,
-                textInputAction: TextInputAction.next,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _ClientFieldCard(
-                icon: LucideIcons.building2,
-                label: 'Ville · optionnel',
-                hint: 'Paris',
-                controller: _city,
-                textCapitalization: TextCapitalization.words,
-                textInputAction: TextInputAction.next,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        _ClientFieldCard(
-          icon: LucideIcons.fileText,
-          label: 'SIRET · optionnel',
-          hint: '123 456 789 01234',
-          controller: _siret,
-          keyboardType: TextInputType.number,
-          maxLength: 14,
-          errorText: _siretError,
-          textInputAction: TextInputAction.done,
-          onChanged: () {
-            final txt = _siret.text.trim();
-            final newErr = (txt.isNotEmpty && txt.length != 14)
-                ? 'SIRET : 14 chiffres requis'
-                : null;
-            if (newErr != _siretError) {
-              setState(() => _siretError = newErr);
-            }
-          },
-        ),
-      ],
     );
   }
 
@@ -1682,7 +1328,7 @@ class _MD3Field extends StatelessWidget {
   }
 }
 
-// ─── Card de champ — design ChronoFacture v2 ────────────────────────────────
+// ─── Card de champ — élévation 3 états + check tappable ────────────────────
 
 class _ClientFieldCard extends StatefulWidget {
   final IconData icon;
@@ -1690,14 +1336,14 @@ class _ClientFieldCard extends StatefulWidget {
   final String label;
   final String hint;
   final TextEditingController controller;
+  final FocusNode focusNode;
+  final VoidCallback onValidate;
   final bool autofocus;
-  final bool focusGreen;
   final TextInputType? keyboardType;
   final TextInputAction? textInputAction;
   final TextCapitalization textCapitalization;
   final int? maxLength;
   final String? errorText;
-  final VoidCallback? onChanged;
 
   const _ClientFieldCard({
     required this.icon,
@@ -1705,14 +1351,14 @@ class _ClientFieldCard extends StatefulWidget {
     required this.label,
     required this.hint,
     required this.controller,
+    required this.focusNode,
+    required this.onValidate,
     this.autofocus = false,
-    this.focusGreen = false,
     this.keyboardType,
     this.textInputAction,
     this.textCapitalization = TextCapitalization.none,
     this.maxLength,
     this.errorText,
-    this.onChanged,
   });
 
   @override
@@ -1720,84 +1366,128 @@ class _ClientFieldCard extends StatefulWidget {
 }
 
 class _ClientFieldCardState extends State<_ClientFieldCard> {
-  late final FocusNode _focusNode;
   bool _focused = false;
+  bool _isValidated = false;
+  String _lastText = '';
 
   @override
   void initState() {
     super.initState();
-    _focusNode = FocusNode();
-    _focusNode.addListener(_handleFocusChange);
+    _lastText = widget.controller.text;
+    widget.focusNode.addListener(_handleFocusChange);
+    widget.controller.addListener(_handleTextChange);
   }
 
   void _handleFocusChange() {
-    if (_focusNode.hasFocus != _focused) {
-      setState(() => _focused = _focusNode.hasFocus);
+    if (!mounted) return;
+    if (widget.focusNode.hasFocus != _focused) {
+      setState(() {
+        _focused = widget.focusNode.hasFocus;
+        // Auto-validation : quitter un champ rempli le fait passer en état validé
+        // (sans avoir à tapper explicitement le check).
+        if (!_focused && widget.controller.text.trim().isNotEmpty) {
+          _isValidated = true;
+        }
+      });
     }
+  }
+
+  void _handleTextChange() {
+    if (!mounted) return;
+    final txt = widget.controller.text;
+    if (txt == _lastText) return;
+    _lastText = txt;
+    // La validation persiste tant que le champ contient du texte.
+    // Effacer le contenu repasse en non-validé (le check redevient outline).
+    setState(() {
+      if (_isValidated && txt.trim().isEmpty) _isValidated = false;
+    });
   }
 
   @override
   void dispose() {
-    _focusNode.removeListener(_handleFocusChange);
-    _focusNode.dispose();
+    widget.focusNode.removeListener(_handleFocusChange);
+    widget.controller.removeListener(_handleTextChange);
     super.dispose();
+  }
+
+  void _onCheckTap() {
+    if (_isValidated) return;
+    if (widget.controller.text.trim().isEmpty) return;
+    setState(() => _isValidated = true);
+    widget.onValidate();
   }
 
   @override
   Widget build(BuildContext context) {
     final hasError = widget.errorText != null;
-    final greenFocus = _focused && widget.focusGreen;
+    final hasText = widget.controller.text.trim().isNotEmpty;
+    final showAccent = _focused || _isValidated;
 
+    // ── Card border + shadow ──
+    // Actif (focused) → green border 2px + shadow (élévation).
+    // Validé OU idle → gray border 1px, pas d'ombre (posé).
     final Color borderColor;
     final double borderWidth;
+    final List<BoxShadow> shadows;
     if (hasError) {
       borderColor = const Color(0xFFEF4444);
       borderWidth = 2;
-    } else if (greenFocus) {
+      shadows = const [];
+    } else if (_focused) {
       borderColor = const Color(0xFF05B89C);
       borderWidth = 2;
+      shadows = const [
+        BoxShadow(
+          color: Color.fromRGBO(5, 184, 156, 0.18),
+          blurRadius: 12,
+          offset: Offset(0, 4),
+        ),
+      ];
     } else {
       borderColor = const Color(0xFFE5E7EB);
       borderWidth = 1;
+      shadows = const [];
     }
 
+    // ── Field icon + label : verts en actif OU validé ──
     final Color accentColor =
-        greenFocus ? const Color(0xFF05B89C) : const Color(0xFF6B7280);
+        showAccent ? const Color(0xFF05B89C) : const Color(0xFF6B7280);
     final FontWeight labelWeight =
-        greenFocus ? FontWeight.w600 : FontWeight.w400;
+        showAccent ? FontWeight.w600 : FontWeight.w400;
+    final IconData displayIcon = showAccent && widget.focusedIcon != null
+        ? widget.focusedIcon!
+        : widget.icon;
+
+    // ── Check pastille ──
+    // Idle (hasText && !showAccent) : gris + border circle gris.
+    // Actif OU validé : icône verte, pas de border.
+    final Color checkColor =
+        showAccent ? const Color(0xFF05B89C) : const Color(0xFF9CA3AF);
+    final Color checkBorderColor =
+        showAccent ? Colors.transparent : const Color(0xFFE5E7EB);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: borderColor, width: borderWidth),
-            boxShadow: const [
-              BoxShadow(
-                color: Color.fromRGBO(0, 0, 0, 0.04),
-                blurRadius: 8,
-                offset: Offset(0, 2),
-              ),
-            ],
+            boxShadow: shadows,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 children: [
-                  Icon(
-                    greenFocus && widget.focusedIcon != null
-                        ? widget.focusedIcon!
-                        : widget.icon,
-                    size: 16,
-                    color: accentColor,
-                  ),
+                  Icon(displayIcon, size: 16, color: accentColor),
                   const SizedBox(width: 6),
-                  Flexible(
+                  Expanded(
                     child: Text(
                       widget.label,
                       style: GoogleFonts.plusJakartaSans(
@@ -1808,12 +1498,50 @@ class _ClientFieldCardState extends State<_ClientFieldCard> {
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
+                  AnimatedOpacity(
+                    duration: const Duration(milliseconds: 150),
+                    opacity: hasText ? 1.0 : 0.0,
+                    child: IgnorePointer(
+                      ignoring: !hasText,
+                      child: GestureDetector(
+                        onTap: _onCheckTap,
+                        behavior: HitTestBehavior.opaque,
+                        child: SizedBox(
+                          width: 32,
+                          height: 32,
+                          child: Center(
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 200),
+                              curve: Curves.easeOut,
+                              width: 24,
+                              height: 24,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: Colors.transparent,
+                                border: Border.all(
+                                  color: checkBorderColor,
+                                  width: 1,
+                                ),
+                              ),
+                              child: Center(
+                                child: Icon(
+                                  Icons.check_rounded,
+                                  size: 16,
+                                  color: checkColor,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
                 ],
               ),
               const SizedBox(height: 4),
               TextField(
                 controller: widget.controller,
-                focusNode: _focusNode,
+                focusNode: widget.focusNode,
                 autofocus: widget.autofocus,
                 keyboardType: widget.keyboardType,
                 textInputAction: widget.textInputAction,
@@ -1824,9 +1552,6 @@ class _ClientFieldCardState extends State<_ClientFieldCard> {
                   fontWeight: FontWeight.w400,
                   color: const Color(0xFF111827),
                 ),
-                onChanged: widget.onChanged != null
-                    ? (_) => widget.onChanged!()
-                    : null,
                 decoration: InputDecoration(
                   filled: false,
                   fillColor: Colors.transparent,
@@ -1911,6 +1636,418 @@ class _ExpandToggle extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+// ─── Page plein écran : Nouveau client ──────────────────────────────────────
+
+class NewClientFormScreen extends ConsumerStatefulWidget {
+  const NewClientFormScreen({super.key});
+
+  @override
+  ConsumerState<NewClientFormScreen> createState() =>
+      _NewClientFormScreenState();
+}
+
+class _NewClientFormScreenState extends ConsumerState<NewClientFormScreen> {
+  final _name = TextEditingController();
+  final _email = TextEditingController();
+  final _firstName = TextEditingController();
+  final _company = TextEditingController();
+  final _phone = TextEditingController();
+  final _whatsapp = TextEditingController();
+  final _street = TextEditingController();
+  final _zipCode = TextEditingController();
+  final _city = TextEditingController();
+  final _siret = TextEditingController();
+
+  final _nameFocus = FocusNode();
+  final _emailFocus = FocusNode();
+  final _firstNameFocus = FocusNode();
+  final _companyFocus = FocusNode();
+  final _phoneFocus = FocusNode();
+  final _whatsappFocus = FocusNode();
+  final _streetFocus = FocusNode();
+  final _zipFocus = FocusNode();
+  final _cityFocus = FocusNode();
+  final _siretFocus = FocusNode();
+
+  bool _saving = false;
+  bool _optionalExpanded = false;
+  String? _emailError;
+  String? _siretError;
+
+  bool get _isFormValid => _name.text.trim().isNotEmpty;
+
+  @override
+  void initState() {
+    super.initState();
+    // Rebuild AppBar "Créer" button enabled state on name changes.
+    _name.addListener(_onNameChange);
+    // Clear inline errors as soon as the value becomes valid again
+    // (no nag during typing, but corrections are reflected immediately).
+    _email.addListener(_onEmailChange);
+    _siret.addListener(_onSiretChange);
+  }
+
+  void _onNameChange() {
+    if (mounted) setState(() {});
+  }
+
+  void _onEmailChange() {
+    if (!mounted || _emailError == null) return;
+    final txt = _email.text.trim();
+    if (txt.isEmpty || txt.contains('@')) {
+      setState(() => _emailError = null);
+    }
+  }
+
+  void _onSiretChange() {
+    if (!mounted || _siretError == null) return;
+    final txt = _siret.text.trim();
+    if (txt.isEmpty || (txt.length == 14 && int.tryParse(txt) != null)) {
+      setState(() => _siretError = null);
+    }
+  }
+
+  @override
+  void dispose() {
+    _name.removeListener(_onNameChange);
+    _email.removeListener(_onEmailChange);
+    _siret.removeListener(_onSiretChange);
+    for (final c in [
+      _name, _email, _firstName, _company, _phone, _whatsapp,
+      _street, _zipCode, _city, _siret,
+    ]) {
+      c.dispose();
+    }
+    for (final f in [
+      _nameFocus, _emailFocus, _firstNameFocus, _companyFocus,
+      _phoneFocus, _whatsappFocus, _streetFocus, _zipFocus,
+      _cityFocus, _siretFocus,
+    ]) {
+      f.dispose();
+    }
+    super.dispose();
+  }
+
+  String? _nullIfEmpty(String v) => v.trim().isEmpty ? null : v.trim();
+
+  bool _validateEmail() {
+    final txt = _email.text.trim();
+    final err =
+        (txt.isNotEmpty && !txt.contains('@')) ? 'Email invalide' : null;
+    if (err != _emailError) setState(() => _emailError = err);
+    return err == null;
+  }
+
+  bool _validateSiret() {
+    final txt = _siret.text.trim();
+    final err = (txt.isNotEmpty &&
+            (txt.length != 14 || int.tryParse(txt) == null))
+        ? 'SIRET : 14 chiffres requis'
+        : null;
+    if (err != _siretError) setState(() => _siretError = err);
+    return err == null;
+  }
+
+  Future<void> _submitNewClient() async {
+    if (!_isFormValid || _saving) return;
+    final emailOk = _validateEmail();
+    final siretOk = _validateSiret();
+    if (!emailOk || !siretOk) {
+      if (!siretOk && !_optionalExpanded) {
+        setState(() => _optionalExpanded = true);
+      }
+      return;
+    }
+    setState(() => _saving = true);
+    try {
+      await ref.read(clientsProvider.notifier).create(
+            name: _name.text.trim(),
+            firstName: _nullIfEmpty(_firstName.text),
+            company: _nullIfEmpty(_company.text),
+            siret: _nullIfEmpty(_siret.text),
+            street: _nullIfEmpty(_street.text),
+            zipCode: _nullIfEmpty(_zipCode.text),
+            city: _nullIfEmpty(_city.text),
+            phone: _nullIfEmpty(_phone.text),
+            whatsapp: _nullIfEmpty(_whatsapp.text),
+            email: _nullIfEmpty(_email.text),
+          );
+      if (mounted) Navigator.pop(context, true);
+    } catch (e, st) {
+      debugPrint('🔴 Client creation error: $e\n$st');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erreur : $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final surface = Theme.of(context).colorScheme.surface;
+    return Scaffold(
+      resizeToAvoidBottomInset: true,
+      backgroundColor: surface,
+      appBar: AppBar(
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        backgroundColor: surface,
+        leadingWidth: 100,
+        leading: TextButton(
+          onPressed: () => Navigator.pop(context),
+          style: TextButton.styleFrom(
+            foregroundColor: const Color(0xFF6B7280),
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+          ),
+          child: Text(
+            'Annuler',
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 15,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ),
+        title: Text(
+          'Nouveau client',
+          style: GoogleFonts.plusJakartaSans(
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+            color: const Color(0xFF111827),
+          ),
+        ),
+        centerTitle: true,
+        actions: [
+          TextButton(
+            onPressed: (_isFormValid && !_saving) ? _submitNewClient : null,
+            style: TextButton.styleFrom(
+              foregroundColor: const Color(0xFF05B89C),
+              disabledForegroundColor: const Color(0xFFD1D5DB),
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+            ),
+            child: _saving
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : Text(
+                    'Créer',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 15,
+                      fontWeight: _isFormValid
+                          ? FontWeight.w700
+                          : FontWeight.w500,
+                    ),
+                  ),
+          ),
+        ],
+        bottom: const PreferredSize(
+          preferredSize: Size.fromHeight(0.5),
+          child: Divider(
+            height: 0.5,
+            thickness: 0.5,
+            color: Color(0xFFE5E7EB),
+          ),
+        ),
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 40),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _ClientFieldCard(
+              icon: LucideIcons.user,
+              focusedIcon: Icons.person,
+              label: 'Nom du client',
+              hint: 'Rocher, Maison Pierre, Cabinet Dupont',
+              controller: _name,
+              focusNode: _nameFocus,
+              autofocus: true,
+              textCapitalization: TextCapitalization.words,
+              textInputAction: TextInputAction.next,
+              onValidate: () => _emailFocus.requestFocus(),
+            ),
+            const SizedBox(height: 12),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Text(
+                'Le nom suffit. Vous pourrez compléter plus tard.',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 12,
+                  color: const Color(0xFF6B7280),
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            _ClientFieldCard(
+              icon: LucideIcons.mail,
+              focusedIcon: Icons.email,
+              label: 'Email · optionnel',
+              hint: 'ex : contact@cabinet-dupon',
+              controller: _email,
+              focusNode: _emailFocus,
+              keyboardType: TextInputType.emailAddress,
+              textInputAction: TextInputAction.next,
+              errorText: _emailError,
+              onValidate: () {
+                if (!_validateEmail()) return;
+                if (_optionalExpanded) {
+                  _firstNameFocus.requestFocus();
+                } else {
+                  _submitNewClient();
+                }
+              },
+            ),
+            const SizedBox(height: 28),
+            _ExpandToggle(
+              expanded: _optionalExpanded,
+              onToggle: () => setState(
+                () => _optionalExpanded = !_optionalExpanded,
+              ),
+            ),
+            AnimatedSize(
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeOut,
+              alignment: Alignment.topCenter,
+              child: _optionalExpanded
+                  ? _buildExpandedFields()
+                  : const SizedBox(width: double.infinity, height: 0),
+            ),
+            const SizedBox(height: 20),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildExpandedFields() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SizedBox(height: 16),
+        _ClientFieldCard(
+          icon: LucideIcons.user,
+          focusedIcon: Icons.person,
+          label: 'Prénom · optionnel',
+          hint: 'Sophie',
+          controller: _firstName,
+          focusNode: _firstNameFocus,
+          textCapitalization: TextCapitalization.words,
+          textInputAction: TextInputAction.next,
+          onValidate: () => _companyFocus.requestFocus(),
+        ),
+        const SizedBox(height: 16),
+        _ClientFieldCard(
+          icon: LucideIcons.briefcase,
+          focusedIcon: Icons.business,
+          label: 'Société · optionnel',
+          hint: 'SARL Dupont',
+          controller: _company,
+          focusNode: _companyFocus,
+          textCapitalization: TextCapitalization.words,
+          textInputAction: TextInputAction.next,
+          onValidate: () => _phoneFocus.requestFocus(),
+        ),
+        const SizedBox(height: 16),
+        _ClientFieldCard(
+          icon: LucideIcons.phone,
+          focusedIcon: Icons.phone,
+          label: 'Téléphone · optionnel',
+          hint: '06 12 34 56 78',
+          controller: _phone,
+          focusNode: _phoneFocus,
+          keyboardType: TextInputType.phone,
+          textInputAction: TextInputAction.next,
+          onValidate: () => _whatsappFocus.requestFocus(),
+        ),
+        const SizedBox(height: 16),
+        _ClientFieldCard(
+          icon: LucideIcons.messageCircle,
+          focusedIcon: Icons.chat,
+          label: 'WhatsApp · optionnel',
+          hint: '06 12 34 56 78',
+          controller: _whatsapp,
+          focusNode: _whatsappFocus,
+          keyboardType: TextInputType.phone,
+          textInputAction: TextInputAction.next,
+          onValidate: () => _streetFocus.requestFocus(),
+        ),
+        const SizedBox(height: 16),
+        _ClientFieldCard(
+          icon: LucideIcons.mapPin,
+          focusedIcon: Icons.location_on,
+          label: 'Rue · optionnel',
+          hint: '12 rue de la Paix',
+          controller: _street,
+          focusNode: _streetFocus,
+          textCapitalization: TextCapitalization.words,
+          textInputAction: TextInputAction.next,
+          onValidate: () => _zipFocus.requestFocus(),
+        ),
+        const SizedBox(height: 16),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: 120,
+              child: _ClientFieldCard(
+                icon: LucideIcons.hash,
+                focusedIcon: Icons.numbers,
+                label: 'CP · optionnel',
+                hint: '75001',
+                controller: _zipCode,
+                focusNode: _zipFocus,
+                keyboardType: TextInputType.number,
+                maxLength: 5,
+                textInputAction: TextInputAction.next,
+                onValidate: () => _cityFocus.requestFocus(),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _ClientFieldCard(
+                icon: LucideIcons.building2,
+                focusedIcon: Icons.location_city,
+                label: 'Ville · optionnel',
+                hint: 'Paris',
+                controller: _city,
+                focusNode: _cityFocus,
+                textCapitalization: TextCapitalization.words,
+                textInputAction: TextInputAction.next,
+                onValidate: () => _siretFocus.requestFocus(),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        _ClientFieldCard(
+          icon: LucideIcons.fileText,
+          focusedIcon: Icons.description,
+          label: 'SIRET · optionnel',
+          hint: '123 456 789 01234',
+          controller: _siret,
+          focusNode: _siretFocus,
+          keyboardType: TextInputType.number,
+          maxLength: 14,
+          errorText: _siretError,
+          textInputAction: TextInputAction.done,
+          onValidate: () {
+            if (!_validateSiret()) return;
+            _submitNewClient();
+          },
+        ),
+      ],
     );
   }
 }
