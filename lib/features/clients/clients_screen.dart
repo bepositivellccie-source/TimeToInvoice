@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -674,8 +675,11 @@ class _ClientFormSheetState extends ConsumerState<ClientFormSheet> {
   bool _saving = false;
   bool _optionalExpanded = false;
   late bool _editMode;
+  String? _emailError;
+  String? _siretError;
 
   bool get _isEdit => widget.existing != null;
+  bool get _isFormValid => _name.text.trim().isNotEmpty;
 
   @override
   void initState() {
@@ -763,6 +767,63 @@ class _ClientFormSheetState extends ConsumerState<ClientFormSheet> {
     }
   }
 
+  Future<void> _submitNewClient() async {
+    final emailTxt = _email.text.trim();
+    final siretTxt = _siret.text.trim();
+
+    String? newEmailErr;
+    String? newSiretErr;
+    if (emailTxt.isNotEmpty && !emailTxt.contains('@')) {
+      newEmailErr = 'Email invalide';
+    }
+    if (siretTxt.isNotEmpty &&
+        (siretTxt.length != 14 || int.tryParse(siretTxt) == null)) {
+      newSiretErr = 'SIRET : 14 chiffres requis';
+    }
+    if (newEmailErr != null || newSiretErr != null) {
+      setState(() {
+        _emailError = newEmailErr;
+        _siretError = newSiretErr;
+        if (newSiretErr != null) _optionalExpanded = true;
+      });
+      return;
+    }
+
+    setState(() {
+      _emailError = null;
+      _siretError = null;
+      _saving = true;
+    });
+
+    try {
+      await ref.read(clientsProvider.notifier).create(
+            name: _name.text.trim(),
+            firstName: _nullIfEmpty(_firstName.text),
+            company: _nullIfEmpty(_company.text),
+            siret: _nullIfEmpty(_siret.text),
+            street: _nullIfEmpty(_street.text),
+            zipCode: _nullIfEmpty(_zipCode.text),
+            city: _nullIfEmpty(_city.text),
+            phone: _nullIfEmpty(_phone.text),
+            whatsapp: _nullIfEmpty(_whatsapp.text),
+            email: _nullIfEmpty(_email.text),
+          );
+      if (mounted) Navigator.pop(context, true);
+    } catch (e, st) {
+      debugPrint('🔴 Client creation error: $e\n$st');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erreur : $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
   Future<void> _openWhatsApp(String number) async {
     final clean = number.replaceAll(RegExp(r'[^\d+]'), '');
     final uri = Uri.parse('https://wa.me/$clean');
@@ -783,17 +844,15 @@ class _ClientFormSheetState extends ConsumerState<ClientFormSheet> {
 
   @override
   Widget build(BuildContext context) {
+    if (!_isEdit) return _buildCreateModal(context);
+
     final bottom = MediaQuery.of(context).viewInsets.bottom;
     final c = widget.existing;
 
-    // Titre : entreprise → nom civil → "Nouveau client"
-    final sheetTitle = !_isEdit
-        ? 'Nouveau client'
-        : _editMode
-            ? 'Modifier'
-            : (c!.company?.isNotEmpty == true
-                ? c.company!
-                : c.fullPersonName);
+    // Titre : entreprise → nom civil
+    final sheetTitle = _editMode
+        ? 'Modifier'
+        : (c!.company?.isNotEmpty == true ? c.company! : c.fullPersonName);
 
     return Container(
       constraints:
@@ -888,6 +947,305 @@ class _ClientFormSheetState extends ConsumerState<ClientFormSheet> {
           ),
         ],
       ),
+    );
+  }
+
+  // ── Mode création (nouveau design ChronoFacture v2) ─────────────────────────
+
+  Widget _buildCreateModal(BuildContext context) {
+    return Container(
+      constraints:
+          BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.94),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Center(
+            child: Container(
+              width: 40,
+              height: 4,
+              margin: const EdgeInsets.only(top: 12, bottom: 8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFE5E7EB),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            child: Row(
+              children: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  style: TextButton.styleFrom(
+                    foregroundColor: const Color(0xFF6B7280),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  ),
+                  child: Text(
+                    'Annuler',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: Text(
+                    'Nouveau client',
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: const Color(0xFF111827),
+                    ),
+                  ),
+                ),
+                TextButton(
+                  onPressed:
+                      (_isFormValid && !_saving) ? _submitNewClient : null,
+                  style: TextButton.styleFrom(
+                    foregroundColor: const Color(0xFF05B89C),
+                    disabledForegroundColor: const Color(0xFFD1D5DB),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  ),
+                  child: Text(
+                    'Créer',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 15,
+                      fontWeight:
+                          _isFormValid ? FontWeight.w700 : FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1, thickness: 0.5, color: Color(0xFFE5E7EB)),
+          Flexible(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _ClientFieldCard(
+                    icon: LucideIcons.user,
+                    focusedIcon: Icons.person,
+                    label: 'Nom du client',
+                    hint: 'Rocher, Maison Pierre, Cabinet Dupont',
+                    controller: _name,
+                    autofocus: true,
+                    focusGreen: true,
+                    textCapitalization: TextCapitalization.words,
+                    textInputAction: TextInputAction.next,
+                    onChanged: () => setState(() {}),
+                  ),
+                  const SizedBox(height: 20),
+                  _ClientFieldCard(
+                    icon: LucideIcons.mail,
+                    label: 'Email · optionnel',
+                    hint: 'ex : contact@cabinet-dupon',
+                    controller: _email,
+                    keyboardType: TextInputType.emailAddress,
+                    textInputAction: TextInputAction.next,
+                    errorText: _emailError,
+                    onChanged: () {
+                      final txt = _email.text.trim();
+                      final newErr = (txt.isNotEmpty && !txt.contains('@'))
+                          ? 'Email invalide'
+                          : null;
+                      if (newErr != _emailError) {
+                        setState(() => _emailError = newErr);
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 28),
+                  _ExpandToggle(
+                    expanded: _optionalExpanded,
+                    onToggle: () => setState(
+                        () => _optionalExpanded = !_optionalExpanded),
+                  ),
+                  AnimatedSize(
+                    duration: const Duration(milliseconds: 200),
+                    curve: Curves.easeOut,
+                    alignment: Alignment.topCenter,
+                    child: _optionalExpanded
+                        ? _buildExpandedFields()
+                        : const SizedBox(width: double.infinity, height: 0),
+                  ),
+                  const SizedBox(height: 20),
+                ],
+              ),
+            ),
+          ),
+          Container(
+            color: Theme.of(context).colorScheme.surface,
+            padding: EdgeInsets.fromLTRB(
+              24, 0, 24,
+              24 + MediaQuery.viewPaddingOf(context).bottom,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: double.infinity,
+                  height: 56,
+                  child: ElevatedButton(
+                    onPressed:
+                        (_isFormValid && !_saving) ? _submitNewClient : null,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF05B89C),
+                      disabledBackgroundColor: const Color(0xFFD1D5DB),
+                      foregroundColor: Colors.white,
+                      disabledForegroundColor: Colors.white,
+                      elevation: 0,
+                      shape: const StadiumBorder(),
+                    ),
+                    child: _saving
+                        ? const SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2,
+                            ),
+                          )
+                        : Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(LucideIcons.plus, size: 18),
+                              const SizedBox(width: 8),
+                              Text(
+                                'Créer le client',
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                          ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Le nom suffit. Vous pourrez compléter plus tard.',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 12,
+                    color: const Color(0xFF6B7280),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildExpandedFields() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SizedBox(height: 16),
+        _ClientFieldCard(
+          icon: LucideIcons.user,
+          label: 'Prénom · optionnel',
+          hint: 'Sophie',
+          controller: _firstName,
+          textCapitalization: TextCapitalization.words,
+          textInputAction: TextInputAction.next,
+        ),
+        const SizedBox(height: 16),
+        _ClientFieldCard(
+          icon: LucideIcons.briefcase,
+          label: 'Société · optionnel',
+          hint: 'SARL Dupont',
+          controller: _company,
+          textCapitalization: TextCapitalization.words,
+          textInputAction: TextInputAction.next,
+        ),
+        const SizedBox(height: 16),
+        _ClientFieldCard(
+          icon: LucideIcons.phone,
+          label: 'Téléphone · optionnel',
+          hint: '06 12 34 56 78',
+          controller: _phone,
+          keyboardType: TextInputType.phone,
+          textInputAction: TextInputAction.next,
+        ),
+        const SizedBox(height: 16),
+        _ClientFieldCard(
+          icon: LucideIcons.messageCircle,
+          label: 'WhatsApp · optionnel',
+          hint: '06 12 34 56 78',
+          controller: _whatsapp,
+          keyboardType: TextInputType.phone,
+          textInputAction: TextInputAction.next,
+        ),
+        const SizedBox(height: 16),
+        _ClientFieldCard(
+          icon: LucideIcons.mapPin,
+          label: 'Rue · optionnel',
+          hint: '12 rue de la Paix',
+          controller: _street,
+          textCapitalization: TextCapitalization.words,
+          textInputAction: TextInputAction.next,
+        ),
+        const SizedBox(height: 16),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: 120,
+              child: _ClientFieldCard(
+                icon: LucideIcons.hash,
+                label: 'CP · optionnel',
+                hint: '75001',
+                controller: _zipCode,
+                keyboardType: TextInputType.number,
+                maxLength: 5,
+                textInputAction: TextInputAction.next,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _ClientFieldCard(
+                icon: LucideIcons.building2,
+                label: 'Ville · optionnel',
+                hint: 'Paris',
+                controller: _city,
+                textCapitalization: TextCapitalization.words,
+                textInputAction: TextInputAction.next,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        _ClientFieldCard(
+          icon: LucideIcons.fileText,
+          label: 'SIRET · optionnel',
+          hint: '123 456 789 01234',
+          controller: _siret,
+          keyboardType: TextInputType.number,
+          maxLength: 14,
+          errorText: _siretError,
+          textInputAction: TextInputAction.done,
+          onChanged: () {
+            final txt = _siret.text.trim();
+            final newErr = (txt.isNotEmpty && txt.length != 14)
+                ? 'SIRET : 14 chiffres requis'
+                : null;
+            if (newErr != _siretError) {
+              setState(() => _siretError = newErr);
+            }
+          },
+        ),
+      ],
     );
   }
 
@@ -1320,6 +1678,239 @@ class _MD3Field extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+// ─── Card de champ — design ChronoFacture v2 ────────────────────────────────
+
+class _ClientFieldCard extends StatefulWidget {
+  final IconData icon;
+  final IconData? focusedIcon;
+  final String label;
+  final String hint;
+  final TextEditingController controller;
+  final bool autofocus;
+  final bool focusGreen;
+  final TextInputType? keyboardType;
+  final TextInputAction? textInputAction;
+  final TextCapitalization textCapitalization;
+  final int? maxLength;
+  final String? errorText;
+  final VoidCallback? onChanged;
+
+  const _ClientFieldCard({
+    required this.icon,
+    this.focusedIcon,
+    required this.label,
+    required this.hint,
+    required this.controller,
+    this.autofocus = false,
+    this.focusGreen = false,
+    this.keyboardType,
+    this.textInputAction,
+    this.textCapitalization = TextCapitalization.none,
+    this.maxLength,
+    this.errorText,
+    this.onChanged,
+  });
+
+  @override
+  State<_ClientFieldCard> createState() => _ClientFieldCardState();
+}
+
+class _ClientFieldCardState extends State<_ClientFieldCard> {
+  late final FocusNode _focusNode;
+  bool _focused = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _focusNode = FocusNode();
+    _focusNode.addListener(_handleFocusChange);
+  }
+
+  void _handleFocusChange() {
+    if (_focusNode.hasFocus != _focused) {
+      setState(() => _focused = _focusNode.hasFocus);
+    }
+  }
+
+  @override
+  void dispose() {
+    _focusNode.removeListener(_handleFocusChange);
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final hasError = widget.errorText != null;
+    final greenFocus = _focused && widget.focusGreen;
+
+    final Color borderColor;
+    final double borderWidth;
+    if (hasError) {
+      borderColor = const Color(0xFFEF4444);
+      borderWidth = 2;
+    } else if (greenFocus) {
+      borderColor = const Color(0xFF05B89C);
+      borderWidth = 2;
+    } else {
+      borderColor = const Color(0xFFE5E7EB);
+      borderWidth = 1;
+    }
+
+    final Color accentColor =
+        greenFocus ? const Color(0xFF05B89C) : const Color(0xFF6B7280);
+    final FontWeight labelWeight =
+        greenFocus ? FontWeight.w600 : FontWeight.w400;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: borderColor, width: borderWidth),
+            boxShadow: const [
+              BoxShadow(
+                color: Color.fromRGBO(0, 0, 0, 0.04),
+                blurRadius: 8,
+                offset: Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    greenFocus && widget.focusedIcon != null
+                        ? widget.focusedIcon!
+                        : widget.icon,
+                    size: 16,
+                    color: accentColor,
+                  ),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(
+                      widget.label,
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 12,
+                        fontWeight: labelWeight,
+                        color: accentColor,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              TextField(
+                controller: widget.controller,
+                focusNode: _focusNode,
+                autofocus: widget.autofocus,
+                keyboardType: widget.keyboardType,
+                textInputAction: widget.textInputAction,
+                textCapitalization: widget.textCapitalization,
+                maxLength: widget.maxLength,
+                style: GoogleFonts.inter(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w400,
+                  color: const Color(0xFF111827),
+                ),
+                onChanged: widget.onChanged != null
+                    ? (_) => widget.onChanged!()
+                    : null,
+                decoration: InputDecoration(
+                  filled: false,
+                  fillColor: Colors.transparent,
+                  isDense: true,
+                  contentPadding: EdgeInsets.zero,
+                  border: InputBorder.none,
+                  enabledBorder: InputBorder.none,
+                  focusedBorder: InputBorder.none,
+                  disabledBorder: InputBorder.none,
+                  errorBorder: InputBorder.none,
+                  focusedErrorBorder: InputBorder.none,
+                  hintText: widget.hint,
+                  hintStyle: GoogleFonts.inter(
+                    fontSize: 18,
+                    color: const Color(0xFF9CA3AF),
+                  ),
+                  counterText: '',
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (hasError) ...[
+          const SizedBox(height: 4),
+          Padding(
+            padding: const EdgeInsets.only(left: 16),
+            child: Text(
+              widget.errorText!,
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 12,
+                color: const Color(0xFFEF4444),
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+// ─── Toggle "Plus d'infos" ──────────────────────────────────────────────────
+
+class _ExpandToggle extends StatelessWidget {
+  final bool expanded;
+  final VoidCallback onToggle;
+
+  const _ExpandToggle({
+    required this.expanded,
+    required this.onToggle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onToggle,
+      onVerticalDragEnd: (_) => onToggle(),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                "Plus d'infos · optionnel",
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
+                  color: const Color(0xFF374151),
+                ),
+              ),
+            ),
+            AnimatedRotation(
+              turns: expanded ? 0.5 : 0,
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeOut,
+              child: const Icon(
+                LucideIcons.chevronDown,
+                size: 20,
+                color: Color(0xFF6B7280),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
