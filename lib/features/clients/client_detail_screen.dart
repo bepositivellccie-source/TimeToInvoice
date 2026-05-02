@@ -1463,8 +1463,8 @@ class _DetailFieldCardState extends State<_DetailFieldCard> {
   void initState() {
     super.initState();
     _lastText = widget.controller.text;
-    // Pré-rempli (édition d'un client existant) ⇒ état validé d'entrée.
-    _isValidated = widget.controller.text.trim().isNotEmpty;
+    // Pré-rempli ⇒ "Idle rempli" (gris) tant que l'utilisateur n'a pas interagi.
+    _isValidated = false;
     widget.focusNode.addListener(_handleFocusChange);
     widget.controller.addListener(_handleTextChange);
   }
@@ -1520,11 +1520,11 @@ class _DetailFieldCardState extends State<_DetailFieldCard> {
       borderWidth = 2;
       shadows = const [];
     } else if (_focused) {
-      borderColor = const Color(0xFF05B89C);
+      borderColor = const Color(0xFF305DA8);
       borderWidth = 2;
       shadows = const [
         BoxShadow(
-          color: Color(0x2E05B89C), // rgba(5,184,156,0.18)
+          color: Color(0x2E305DA8), // rgba(48,93,168,0.18)
           blurRadius: 12,
           offset: Offset(0, 4),
         ),
@@ -1536,17 +1536,19 @@ class _DetailFieldCardState extends State<_DetailFieldCard> {
     }
 
     final Color accentColor =
-        showAccent ? const Color(0xFF05B89C) : const Color(0xFF6B7280);
+        showAccent ? const Color(0xFF305DA8) : const Color(0xFF6B7280);
     final FontWeight labelWeight =
         showAccent ? FontWeight.w600 : FontWeight.w400;
     final IconData displayIcon = showAccent && widget.focusedIcon != null
         ? widget.focusedIcon!
         : widget.icon;
 
+    // Check : bleu filled UNIQUEMENT quand validated.
+    // Idle rempli OU focused rempli ⇒ outline gris.
     final Color checkColor =
-        showAccent ? const Color(0xFF05B89C) : const Color(0xFF9CA3AF);
+        _isValidated ? const Color(0xFF305DA8) : const Color(0xFF9CA3AF);
     final Color checkBorderColor =
-        showAccent ? Colors.transparent : const Color(0xFFE5E7EB);
+        _isValidated ? Colors.transparent : const Color(0xFFE5E7EB);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
