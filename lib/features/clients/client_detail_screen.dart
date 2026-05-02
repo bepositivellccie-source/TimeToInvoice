@@ -1588,7 +1588,10 @@ class _DetailFieldCardState extends State<_DetailFieldCard> {
                   ),
                   AnimatedOpacity(
                     duration: const Duration(milliseconds: 150),
-                    opacity: hasText ? 1.0 : 0.0,
+                    // Visible dès que le champ est rempli OU focused
+                    // (l'utilisateur voit la pastille apparaître au tap, pas
+                    // après la première frappe).
+                    opacity: (hasText || _focused) ? 1.0 : 0.0,
                     child: IgnorePointer(
                       ignoring: !hasText,
                       child: GestureDetector(
