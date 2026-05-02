@@ -33,7 +33,6 @@ class ClientDetailScreen extends ConsumerStatefulWidget {
 class _ClientDetailScreenState extends ConsumerState<ClientDetailScreen> {
   bool _isEditing = false;
   bool _saving = false;
-  final _formKey = GlobalKey<FormState>();
 
   // Controllers
   late final TextEditingController _company;
@@ -48,6 +47,22 @@ class _ClientDetailScreenState extends ConsumerState<ClientDetailScreen> {
   late final TextEditingController _email;
   bool _ctrlInitialized = false;
 
+  // Focus nodes
+  final _companyFocus = FocusNode();
+  final _firstNameFocus = FocusNode();
+  final _nameFocus = FocusNode();
+  final _siretFocus = FocusNode();
+  final _emailFocus = FocusNode();
+  final _phoneFocus = FocusNode();
+  final _whatsappFocus = FocusNode();
+  final _streetFocus = FocusNode();
+  final _zipFocus = FocusNode();
+  final _cityFocus = FocusNode();
+
+  // Inline errors (auto-cleared as the user types a valid value)
+  String? _nameError;
+  String? _siretError;
+
   void _initControllers(Client c) {
     if (_ctrlInitialized) return;
     _ctrlInitialized = true;
@@ -61,6 +76,24 @@ class _ClientDetailScreenState extends ConsumerState<ClientDetailScreen> {
     _phone = TextEditingController(text: c.phone ?? '');
     _whatsapp = TextEditingController(text: c.whatsapp ?? '');
     _email = TextEditingController(text: c.email ?? '');
+
+    _name.addListener(_onNameChange);
+    _siret.addListener(_onSiretChange);
+  }
+
+  void _onNameChange() {
+    if (!mounted || _nameError == null) return;
+    if (_name.text.trim().isNotEmpty) {
+      setState(() => _nameError = null);
+    }
+  }
+
+  void _onSiretChange() {
+    if (!mounted || _siretError == null) return;
+    final txt = _siret.text.trim();
+    if (txt.isEmpty || (txt.length == 14 && int.tryParse(txt) != null)) {
+      setState(() => _siretError = null);
+    }
   }
 
   void _syncControllers(Client c) {
@@ -74,11 +107,15 @@ class _ClientDetailScreenState extends ConsumerState<ClientDetailScreen> {
     _phone.text = c.phone ?? '';
     _whatsapp.text = c.whatsapp ?? '';
     _email.text = c.email ?? '';
+    _nameError = null;
+    _siretError = null;
   }
 
   @override
   void dispose() {
     if (_ctrlInitialized) {
+      _name.removeListener(_onNameChange);
+      _siret.removeListener(_onSiretChange);
       for (final ctrl in [
         _company, _firstName, _name, _street, _zipCode, _city, _siret,
         _phone, _whatsapp, _email,
@@ -86,13 +123,37 @@ class _ClientDetailScreenState extends ConsumerState<ClientDetailScreen> {
         ctrl.dispose();
       }
     }
+    for (final f in [
+      _companyFocus, _firstNameFocus, _nameFocus, _siretFocus, _emailFocus,
+      _phoneFocus, _whatsappFocus, _streetFocus, _zipFocus, _cityFocus,
+    ]) {
+      f.dispose();
+    }
     super.dispose();
   }
 
   String? _nullIfEmpty(String v) => v.trim().isEmpty ? null : v.trim();
 
+  bool _validateName() {
+    final err = _name.text.trim().isEmpty ? 'Requis' : null;
+    if (err != _nameError) setState(() => _nameError = err);
+    return err == null;
+  }
+
+  bool _validateSiret() {
+    final txt = _siret.text.trim();
+    final err = (txt.isNotEmpty &&
+            (txt.length != 14 || int.tryParse(txt) == null))
+        ? '14 chiffres exactement'
+        : null;
+    if (err != _siretError) setState(() => _siretError = err);
+    return err == null;
+  }
+
   Future<void> _save(Client current) async {
-    if (!_formKey.currentState!.validate()) return;
+    final nameOk = _validateName();
+    final siretOk = _validateSiret();
+    if (!nameOk || !siretOk) return;
     setState(() => _saving = true);
     try {
       await ref.read(clientsProvider.notifier).edit(
@@ -176,224 +237,279 @@ class _ClientDetailScreenState extends ConsumerState<ClientDetailScreen> {
 
     return Scaffold(
       backgroundColor: pageBg,
-      body: Form(
-        key: _formKey,
-        child: CustomScrollView(
-          slivers: [
-            // ── Header compact ─────────────────────────────────
-            _ClientHeader(
-              client: client,
-              onBack: () => context.go('/clients'),
-              isEditing: _isEditing,
-              isSaving: _saving,
-              onCancelEdit: () => _cancelEdit(client),
-              onToggleEdit: () {
-                if (_isEditing) {
-                  _save(client);
-                } else {
-                  _syncControllers(client);
-                  setState(() => _isEditing = true);
-                }
-              },
-            ),
+      body: CustomScrollView(
+        slivers: [
+          // ── Header compact ─────────────────────────────────
+          _ClientHeader(
+            client: client,
+            onBack: () => context.go('/clients'),
+            isEditing: _isEditing,
+            isSaving: _saving,
+            onCancelEdit: () => _cancelEdit(client),
+            onToggleEdit: () {
+              if (_isEditing) {
+                _save(client);
+              } else {
+                _syncControllers(client);
+                setState(() => _isEditing = true);
+              }
+            },
+          ),
 
-            SliverToBoxAdapter(
-              child: Column(
-                children: [
-                  // ── Actions rapides (lecture only) ──────────
-                  if (!_isEditing) ...[
-                    _QuickActions(client: client),
-                    const SizedBox(height: 16),
-                  ],
-
-                  // ── IDENTITÉ card (édition only, MD3 style) ──
-                  if (_isEditing) ...[
-                    _WhiteCard(
-                      title: 'IDENTITÉ',
-                      child: Column(
-                        children: [
-                          _MD3EditField(
-                            label: 'Entreprise',
-                            controller: _company,
-                            hint: 'ex : Cabinet Dupont SARL',
-                            textCapitalization: TextCapitalization.words,
-                          ),
-                          const Divider(height: 1, thickness: 0.5),
-                          _MD3EditField(
-                            label: 'Prénom',
-                            controller: _firstName,
-                            hint: 'Marie',
-                            textCapitalization: TextCapitalization.words,
-                          ),
-                          const Divider(height: 1, thickness: 0.5),
-                          _MD3EditField(
-                            label: 'Nom *',
-                            controller: _name,
-                            hint: 'Dupont',
-                            textCapitalization: TextCapitalization.words,
-                            validator: (v) =>
-                                (v == null || v.trim().isEmpty) ? 'Requis' : null,
-                          ),
-                          const Divider(height: 1, thickness: 0.5),
-                          _SiretEditField(
-                            controller: _siret,
-                            validator: (v) {
-                              if (v == null || v.isEmpty) return null;
-                              if (v.length != 14 || int.tryParse(v) == null) {
-                                return '14 chiffres exactement';
-                              }
-                              return null;
-                            },
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                  ],
-
-                  // ── COORDONNÉES card (lecture OU édition) ─────
-                  if (_isEditing)
-                    _WhiteCard(
-                      title: 'COORDONNÉES',
-                      child: Column(
-                        children: [
-                          _MD3EditField(
-                            label: 'Email',
-                            controller: _email,
-                            hint: 'ex : marie.dupont@gmail.com',
-                            keyboardType: TextInputType.emailAddress,
-                          ),
-                          const Divider(height: 1, thickness: 0.5),
-                          _MD3EditField(
-                            label: 'Téléphone',
-                            controller: _phone,
-                            hint: 'ex : +33 6 12 34 56 78',
-                            keyboardType: TextInputType.phone,
-                          ),
-                          const Divider(height: 1, thickness: 0.5),
-                          _MD3EditField(
-                            label: 'WhatsApp',
-                            controller: _whatsapp,
-                            hint: 'ex : +33 6 12 34 56 78',
-                            keyboardType: TextInputType.phone,
-                          ),
-                          const Divider(height: 1, thickness: 0.5),
-                          _MD3EditField(
-                            label: 'Rue',
-                            controller: _street,
-                            hint: 'ex : 12 rue de la Paix',
-                          ),
-                          const Divider(height: 1, thickness: 0.5),
-                          // CP + Ville côte à côte
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Flexible(
-                                  flex: 1,
-                                  child: _MD3EditField(
-                                    label: 'Code postal',
-                                    controller: _zipCode,
-                                    hint: '75001',
-                                    keyboardType: TextInputType.number,
-                                    maxLength: 5,
-                                    outerPadding: EdgeInsets.zero,
-                                  ),
-                                ),
-                                const SizedBox(width: 16),
-                                Flexible(
-                                  flex: 2,
-                                  child: _MD3EditField(
-                                    label: 'Ville',
-                                    controller: _city,
-                                    hint: 'Paris',
-                                    textCapitalization: TextCapitalization.words,
-                                    textInputAction: TextInputAction.done,
-                                    onSubmit: () => _save(client),
-                                    outerPadding: EdgeInsets.zero,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    )
-                  else
-                    _ContactCard(client: client),
-
+          SliverToBoxAdapter(
+            child: Column(
+              children: [
+                // ── Actions rapides (lecture only) ──────────
+                if (!_isEditing) ...[
+                  _QuickActions(client: client),
                   const SizedBox(height: 16),
+                ],
 
-                  // ── Bouton Enregistrer (bas de page, mode édition) ──
-                  if (_isEditing) ...[
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: SizedBox(
-                        width: double.infinity,
-                        height: 48,
-                        child: FilledButton(
-                          onPressed: _saving ? null : () => _save(client),
-                          style: FilledButton.styleFrom(
-                            backgroundColor: const Color(0xFF305DA8),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                          child: _saving
-                              ? const SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: Colors.white,
-                                  ),
-                                )
-                              : const Text(
-                                  'Enregistrer',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                        ),
-                      ),
+                // ── IDENTITÉ — édition only, cards individuelles élevées ──
+                if (_isEditing) ...[
+                  _editSectionTitle('IDENTITÉ'),
+                  _editFieldCardSpaced(
+                    _DetailFieldCard(
+                      icon: LucideIcons.briefcase,
+                      focusedIcon: Icons.business,
+                      label: 'Entreprise',
+                      hint: 'ex : Cabinet Dupont SARL',
+                      controller: _company,
+                      focusNode: _companyFocus,
+                      textCapitalization: TextCapitalization.words,
+                      onValidate: () => _firstNameFocus.requestFocus(),
                     ),
-                  ],
-
-                  // 5 — Section PROJETS (toujours visible)
-                  const SizedBox(height: 32),
-                  _ProjectsCard(
-                    clientId: widget.clientId,
-                    projectsAsync: projectsAsync,
-                    onAddProject: () => _openProjectForm(context, ref),
                   ),
+                  _editFieldCardSpaced(
+                    _DetailFieldCard(
+                      icon: LucideIcons.user,
+                      focusedIcon: Icons.person,
+                      label: 'Prénom',
+                      hint: 'Marie',
+                      controller: _firstName,
+                      focusNode: _firstNameFocus,
+                      textCapitalization: TextCapitalization.words,
+                      onValidate: () => _nameFocus.requestFocus(),
+                    ),
+                  ),
+                  _editFieldCardSpaced(
+                    _DetailFieldCard(
+                      icon: LucideIcons.user,
+                      focusedIcon: Icons.person,
+                      label: 'Nom *',
+                      hint: 'Dupont',
+                      controller: _name,
+                      focusNode: _nameFocus,
+                      textCapitalization: TextCapitalization.words,
+                      errorText: _nameError,
+                      onValidate: () {
+                        if (!_validateName()) return;
+                        _siretFocus.requestFocus();
+                      },
+                    ),
+                  ),
+                  _editFieldCardSpaced(
+                    _DetailFieldCard(
+                      icon: LucideIcons.fileText,
+                      focusedIcon: Icons.description,
+                      label: 'SIRET',
+                      hint: 'ex : 12345678901234',
+                      controller: _siret,
+                      focusNode: _siretFocus,
+                      keyboardType: TextInputType.number,
+                      maxLength: 14,
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                      errorText: _siretError,
+                      onValidate: () {
+                        if (!_validateSiret()) return;
+                        _emailFocus.requestFocus();
+                      },
+                    ),
+                  ),
+                ],
 
-                  // 6 — Section FACTURES (lue depuis invoicesProvider)
-                  const SizedBox(height: 20),
-                  _InvoicesCard(clientId: widget.clientId),
-
-                  // ── Membre depuis ─────────────────────────────
+                // ── COORDONNÉES — édition : cards individuelles ; lecture : _ContactCard ──
+                if (_isEditing) ...[
+                  _editSectionTitle('COORDONNÉES', topGap: 24),
+                  _editFieldCardSpaced(
+                    _DetailFieldCard(
+                      icon: LucideIcons.mail,
+                      focusedIcon: Icons.email,
+                      label: 'Email',
+                      hint: 'ex : marie.dupont@gmail.com',
+                      controller: _email,
+                      focusNode: _emailFocus,
+                      keyboardType: TextInputType.emailAddress,
+                      onValidate: () => _phoneFocus.requestFocus(),
+                    ),
+                  ),
+                  _editFieldCardSpaced(
+                    _DetailFieldCard(
+                      icon: LucideIcons.phone,
+                      focusedIcon: Icons.phone,
+                      label: 'Téléphone',
+                      hint: 'ex : +33 6 12 34 56 78',
+                      controller: _phone,
+                      focusNode: _phoneFocus,
+                      keyboardType: TextInputType.phone,
+                      onValidate: () => _whatsappFocus.requestFocus(),
+                    ),
+                  ),
+                  _editFieldCardSpaced(
+                    _DetailFieldCard(
+                      icon: LucideIcons.messageCircle,
+                      focusedIcon: Icons.chat,
+                      label: 'WhatsApp',
+                      hint: 'ex : +33 6 12 34 56 78',
+                      controller: _whatsapp,
+                      focusNode: _whatsappFocus,
+                      keyboardType: TextInputType.phone,
+                      onValidate: () => _streetFocus.requestFocus(),
+                    ),
+                  ),
+                  _editFieldCardSpaced(
+                    _DetailFieldCard(
+                      icon: LucideIcons.mapPin,
+                      focusedIcon: Icons.location_on,
+                      label: 'Rue',
+                      hint: 'ex : 12 rue de la Paix',
+                      controller: _street,
+                      focusNode: _streetFocus,
+                      textCapitalization: TextCapitalization.words,
+                      onValidate: () => _zipFocus.requestFocus(),
+                    ),
+                  ),
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
-                    child: Center(
-                      child: Text(
-                        'Client depuis le ${DateFormat.yMMMMd('fr_FR').format(client.createdAt)}',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Color(0xFF9CA3AF),
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SizedBox(
+                          width: 120,
+                          child: _DetailFieldCard(
+                            icon: LucideIcons.hash,
+                            focusedIcon: Icons.numbers,
+                            label: 'CP',
+                            hint: '75001',
+                            controller: _zipCode,
+                            focusNode: _zipFocus,
+                            keyboardType: TextInputType.number,
+                            maxLength: 5,
+                            onValidate: () => _cityFocus.requestFocus(),
+                          ),
                         ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _DetailFieldCard(
+                            icon: LucideIcons.building2,
+                            focusedIcon: Icons.location_city,
+                            label: 'Ville',
+                            hint: 'Paris',
+                            controller: _city,
+                            focusNode: _cityFocus,
+                            textCapitalization: TextCapitalization.words,
+                            textInputAction: TextInputAction.done,
+                            onValidate: () => _save(client),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ] else
+                  _ContactCard(client: client),
+
+                const SizedBox(height: 16),
+
+                // ── Bouton Enregistrer (bas de page, mode édition) ──
+                if (_isEditing) ...[
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: SizedBox(
+                      width: double.infinity,
+                      height: 48,
+                      child: FilledButton(
+                        onPressed: _saving ? null : () => _save(client),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: const Color(0xFF305DA8),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: _saving
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Text(
+                                'Enregistrer',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
                       ),
                     ),
                   ),
                 ],
+
+                // 5 — Section PROJETS (toujours visible)
+                const SizedBox(height: 32),
+                _ProjectsCard(
+                  clientId: widget.clientId,
+                  projectsAsync: projectsAsync,
+                  onAddProject: () => _openProjectForm(context, ref),
+                ),
+
+                // 6 — Section FACTURES (lue depuis invoicesProvider)
+                const SizedBox(height: 20),
+                _InvoicesCard(clientId: widget.clientId),
+
+                // ── Membre depuis ─────────────────────────────
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+                  child: Center(
+                    child: Text(
+                      'Client depuis le ${DateFormat.yMMMMd('fr_FR').format(client.createdAt)}',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF9CA3AF),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _editSectionTitle(String title, {double topGap = 16}) => Padding(
+        padding: EdgeInsets.fromLTRB(32, topGap, 32, 8),
+        child: Row(
+          children: [
+            Text(
+              title,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF9CA3AF),
+                letterSpacing: 1.2,
               ),
             ),
           ],
         ),
-      ),
-    );
-  }
+      );
+
+  Widget _editFieldCardSpaced(Widget card) => Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+        child: card,
+      );
 
   void _openProjectForm(BuildContext context, WidgetRef ref) {
     showModalBottomSheet(
@@ -867,7 +983,7 @@ class _ContactRow extends StatelessWidget {
           );
       },
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         child: Row(
           children: [
             Icon(data.icon, size: 20, color: const Color(0xFF9CA3AF)),
@@ -1072,7 +1188,7 @@ class _ClientInvoiceRow extends StatelessWidget {
     return InkWell(
       onTap: () => context.push('/invoices'),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         child: Row(
           children: [
             Container(
@@ -1226,7 +1342,7 @@ class _ProjectRow extends ConsumerWidget {
       onTap: () => context.go(
           '/clients/${project.clientId}/projects/${project.id}/sessions'),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         child: Row(
           children: [
             // Status dot
@@ -1299,231 +1415,261 @@ class _ProjectRow extends ConsumerWidget {
 
 // ─── Empty projects inline ─────────────────────────────────────────────────
 
-// ─── MD3 Edit Field — label 11px gris, focus bleu, pas d'icône ────────────
+// ─── Detail Field Card — pattern identique au formulaire Nouveau client ──
+// 3 états : idle / focused (élévation verte) / validated (icône + label verts)
+// Check tappable à droite du label, persistant dès qu'un texte est présent.
 
-class _MD3EditField extends StatefulWidget {
+class _DetailFieldCard extends StatefulWidget {
+  final IconData icon;
+  final IconData? focusedIcon;
   final String label;
-  final TextEditingController controller;
   final String? hint;
+  final TextEditingController controller;
+  final FocusNode focusNode;
+  final VoidCallback onValidate;
   final TextInputType? keyboardType;
-  final TextCapitalization textCapitalization;
   final TextInputAction textInputAction;
+  final TextCapitalization textCapitalization;
   final int? maxLength;
-  final String? Function(String?)? validator;
-  final VoidCallback? onSubmit;
-  final EdgeInsetsGeometry? outerPadding;
+  final List<TextInputFormatter>? inputFormatters;
+  final String? errorText;
 
-  const _MD3EditField({
+  const _DetailFieldCard({
+    required this.icon,
+    this.focusedIcon,
     required this.label,
-    required this.controller,
     this.hint,
+    required this.controller,
+    required this.focusNode,
+    required this.onValidate,
     this.keyboardType,
-    this.textCapitalization = TextCapitalization.none,
     this.textInputAction = TextInputAction.next,
+    this.textCapitalization = TextCapitalization.none,
     this.maxLength,
-    this.validator,
-    this.onSubmit,
-    this.outerPadding,
+    this.inputFormatters,
+    this.errorText,
   });
 
   @override
-  State<_MD3EditField> createState() => _MD3EditFieldState();
+  State<_DetailFieldCard> createState() => _DetailFieldCardState();
 }
 
-class _MD3EditFieldState extends State<_MD3EditField> {
-  late final FocusNode _focus;
-  bool _hasFocus = false;
-
-  static const _brand = Color(0xFF305DA8);
-  static const _grey = Color(0xFF9CA3AF);
+class _DetailFieldCardState extends State<_DetailFieldCard> {
+  bool _focused = false;
+  bool _isValidated = false;
+  String _lastText = '';
 
   @override
   void initState() {
     super.initState();
-    _focus = FocusNode()..addListener(_onFocusChange);
+    _lastText = widget.controller.text;
+    // Pré-rempli (édition d'un client existant) ⇒ état validé d'entrée.
+    _isValidated = widget.controller.text.trim().isNotEmpty;
+    widget.focusNode.addListener(_handleFocusChange);
+    widget.controller.addListener(_handleTextChange);
   }
 
-  void _onFocusChange() {
-    if (_hasFocus != _focus.hasFocus) {
-      setState(() => _hasFocus = _focus.hasFocus);
+  void _handleFocusChange() {
+    if (!mounted) return;
+    if (widget.focusNode.hasFocus != _focused) {
+      setState(() {
+        _focused = widget.focusNode.hasFocus;
+        // Auto-validation à la perte du focus si le champ est rempli.
+        if (!_focused && widget.controller.text.trim().isNotEmpty) {
+          _isValidated = true;
+        }
+      });
     }
+  }
+
+  void _handleTextChange() {
+    if (!mounted) return;
+    final txt = widget.controller.text;
+    if (txt == _lastText) return;
+    _lastText = txt;
+    setState(() {
+      if (_isValidated && txt.trim().isEmpty) _isValidated = false;
+    });
   }
 
   @override
   void dispose() {
-    _focus.removeListener(_onFocusChange);
-    _focus.dispose();
+    widget.focusNode.removeListener(_handleFocusChange);
+    widget.controller.removeListener(_handleTextChange);
     super.dispose();
+  }
+
+  void _onCheckTap() {
+    if (_isValidated) return;
+    if (widget.controller.text.trim().isEmpty) return;
+    setState(() => _isValidated = true);
+    widget.onValidate();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: widget.outerPadding ??
-          const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            widget.label,
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: _hasFocus ? _brand : _grey,
-              letterSpacing: 0.3,
-            ),
-          ),
-          TextFormField(
-            controller: widget.controller,
-            focusNode: _focus,
-            validator: widget.validator,
-            keyboardType: widget.keyboardType,
-            textCapitalization: widget.textCapitalization,
-            textInputAction: widget.textInputAction,
-            maxLength: widget.maxLength,
-            onFieldSubmitted:
-                widget.onSubmit != null ? (_) => widget.onSubmit!() : null,
-            style: TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w500,
-              color: Theme.of(context).colorScheme.onSurface,
-            ),
-            decoration: InputDecoration(
-              hintText: widget.hint,
-              hintStyle: const TextStyle(
-                  fontSize: 14, color: Color(0xFFBDBDBD)),
-              counterText: '',
-              isDense: true,
-              contentPadding: const EdgeInsets.symmetric(vertical: 10),
-              border: InputBorder.none,
-              enabledBorder: InputBorder.none,
-              focusedBorder: const UnderlineInputBorder(
-                borderSide: BorderSide(color: _brand, width: 1.5),
-              ),
-              errorBorder: const UnderlineInputBorder(
-                borderSide: BorderSide(color: Color(0xFFDC2626), width: 1),
-              ),
-              focusedErrorBorder: const UnderlineInputBorder(
-                borderSide: BorderSide(color: Color(0xFFDC2626), width: 1.5),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
+    final hasError = widget.errorText != null;
+    final hasText = widget.controller.text.trim().isNotEmpty;
+    final showAccent = _focused || _isValidated;
 
-// ─── SIRET Edit Field — compteur X/14 à droite du label ───────────────────
-
-class _SiretEditField extends StatefulWidget {
-  final TextEditingController controller;
-  final String? Function(String?)? validator;
-
-  const _SiretEditField({required this.controller, this.validator});
-
-  @override
-  State<_SiretEditField> createState() => _SiretEditFieldState();
-}
-
-class _SiretEditFieldState extends State<_SiretEditField> {
-  late final FocusNode _focus;
-  bool _hasFocus = false;
-
-  static const _brand = Color(0xFF305DA8);
-  static const _grey = Color(0xFF9CA3AF);
-
-  @override
-  void initState() {
-    super.initState();
-    _focus = FocusNode()..addListener(_onFocusChange);
-    widget.controller.addListener(_onTextChange);
-  }
-
-  void _onFocusChange() {
-    if (_hasFocus != _focus.hasFocus) {
-      setState(() => _hasFocus = _focus.hasFocus);
+    final Color borderColor;
+    final double borderWidth;
+    final List<BoxShadow> shadows;
+    if (hasError) {
+      borderColor = const Color(0xFFEF4444);
+      borderWidth = 2;
+      shadows = const [];
+    } else if (_focused) {
+      borderColor = const Color(0xFF05B89C);
+      borderWidth = 2;
+      shadows = const [
+        BoxShadow(
+          color: Color(0x2E05B89C), // rgba(5,184,156,0.18)
+          blurRadius: 12,
+          offset: Offset(0, 4),
+        ),
+      ];
+    } else {
+      borderColor = const Color(0xFFE5E7EB);
+      borderWidth = 1;
+      shadows = const [];
     }
-  }
 
-  void _onTextChange() => setState(() {});
+    final Color accentColor =
+        showAccent ? const Color(0xFF05B89C) : const Color(0xFF6B7280);
+    final FontWeight labelWeight =
+        showAccent ? FontWeight.w600 : FontWeight.w400;
+    final IconData displayIcon = showAccent && widget.focusedIcon != null
+        ? widget.focusedIcon!
+        : widget.icon;
 
-  @override
-  void dispose() {
-    _focus.removeListener(_onFocusChange);
-    _focus.dispose();
-    widget.controller.removeListener(_onTextChange);
-    super.dispose();
-  }
+    final Color checkColor =
+        showAccent ? const Color(0xFF05B89C) : const Color(0xFF9CA3AF);
+    final Color checkBorderColor =
+        showAccent ? Colors.transparent : const Color(0xFFE5E7EB);
 
-  @override
-  Widget build(BuildContext context) {
-    final count = widget.controller.text.length;
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: borderColor, width: borderWidth),
+            boxShadow: shadows,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                'SIRET',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: _hasFocus ? _brand : _grey,
-                  letterSpacing: 0.3,
-                ),
+              Row(
+                children: [
+                  Icon(displayIcon, size: 16, color: accentColor),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      widget.label,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: labelWeight,
+                        color: accentColor,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  AnimatedOpacity(
+                    duration: const Duration(milliseconds: 150),
+                    opacity: hasText ? 1.0 : 0.0,
+                    child: IgnorePointer(
+                      ignoring: !hasText,
+                      child: GestureDetector(
+                        onTap: _onCheckTap,
+                        behavior: HitTestBehavior.opaque,
+                        child: SizedBox(
+                          width: 32,
+                          height: 32,
+                          child: Center(
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 200),
+                              curve: Curves.easeOut,
+                              width: 24,
+                              height: 24,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: Colors.transparent,
+                                border: Border.all(
+                                  color: checkBorderColor,
+                                  width: 1,
+                                ),
+                              ),
+                              child: Center(
+                                child: Icon(
+                                  Icons.check_rounded,
+                                  size: 16,
+                                  color: checkColor,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
-              const Spacer(),
-              Text(
-                '$count/14',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w500,
-                  color: count == 14 ? _brand : _grey,
+              const SizedBox(height: 4),
+              TextField(
+                controller: widget.controller,
+                focusNode: widget.focusNode,
+                keyboardType: widget.keyboardType,
+                textInputAction: widget.textInputAction,
+                textCapitalization: widget.textCapitalization,
+                maxLength: widget.maxLength,
+                inputFormatters: widget.inputFormatters,
+                onSubmitted: (_) => widget.onValidate(),
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w400,
+                  color: Color(0xFF111827),
+                ),
+                decoration: InputDecoration(
+                  filled: false,
+                  fillColor: Colors.transparent,
+                  isDense: true,
+                  contentPadding: EdgeInsets.zero,
+                  border: InputBorder.none,
+                  enabledBorder: InputBorder.none,
+                  focusedBorder: InputBorder.none,
+                  disabledBorder: InputBorder.none,
+                  errorBorder: InputBorder.none,
+                  focusedErrorBorder: InputBorder.none,
+                  hintText: widget.hint,
+                  hintStyle: const TextStyle(
+                    fontSize: 18,
+                    color: Color(0xFF9CA3AF),
+                  ),
+                  counterText: '',
                 ),
               ),
             ],
           ),
-          TextFormField(
-            controller: widget.controller,
-            focusNode: _focus,
-            validator: widget.validator,
-            keyboardType: TextInputType.number,
-            maxLength: 14,
-            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-            style: TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w500,
-              color: Theme.of(context).colorScheme.onSurface,
-              fontFeatures: const [FontFeature.tabularFigures()],
-              letterSpacing: 0.5,
-            ),
-            decoration: InputDecoration(
-              hintText: 'ex : 12345678901234',
-              hintStyle: const TextStyle(
-                  fontSize: 14, color: Color(0xFFBDBDBD)),
-              counterText: '',
-              isDense: true,
-              contentPadding: const EdgeInsets.symmetric(vertical: 10),
-              border: InputBorder.none,
-              enabledBorder: InputBorder.none,
-              focusedBorder: const UnderlineInputBorder(
-                borderSide: BorderSide(color: _brand, width: 1.5),
-              ),
-              errorBorder: const UnderlineInputBorder(
-                borderSide: BorderSide(color: Color(0xFFDC2626), width: 1),
-              ),
-              focusedErrorBorder: const UnderlineInputBorder(
-                borderSide: BorderSide(color: Color(0xFFDC2626), width: 1.5),
+        ),
+        if (hasError) ...[
+          const SizedBox(height: 4),
+          Padding(
+            padding: const EdgeInsets.only(left: 16),
+            child: Text(
+              widget.errorText!,
+              style: const TextStyle(
+                fontSize: 12,
+                color: Color(0xFFEF4444),
               ),
             ),
           ),
         ],
-      ),
+      ],
     );
   }
 }
