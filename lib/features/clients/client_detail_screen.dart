@@ -1474,8 +1474,13 @@ class _DetailFieldCardState extends State<_DetailFieldCard> {
     if (widget.focusNode.hasFocus != _focused) {
       setState(() {
         _focused = widget.focusNode.hasFocus;
-        // Auto-validation à la perte du focus si le champ est rempli.
-        if (!_focused && widget.controller.text.trim().isNotEmpty) {
+        if (_focused) {
+          // Re-clic dans un champ déjà validé ⇒ retour en "actif" :
+          // check redevient gris, ombre réapparaît, l'utilisateur doit revalider.
+          _isValidated = false;
+        } else if (widget.controller.text.trim().isNotEmpty) {
+          // Perte de focus avec contenu ⇒ auto-validation
+          // (check bleu persistant, ombre disparaît).
           _isValidated = true;
         }
       });
