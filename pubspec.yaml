@@ -91,6 +91,7 @@ flutter:
     - assets/clock.svg
     - assets/timer_black.svg
     - assets/timer_red.svg
+    - assets/facture_x.webp
     - assets/sRGB2014.icc
     - assets/icons/
 

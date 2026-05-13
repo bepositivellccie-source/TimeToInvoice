@@ -14,6 +14,7 @@ import '../../core/providers/project_billing_status_provider.dart';
 import '../../core/providers/projects_provider.dart';
 import '../../core/providers/sessions_provider.dart';
 import '../../core/theme/cf_palette.dart';
+import '../timer/timer_notifier.dart';
 
 /// Accueil ChronoFacture v2 — minimaliste, centré sur l'action.
 ///
@@ -122,53 +123,74 @@ class _WeeklyKpiCard extends ConsumerWidget {
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Container(
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [CF.accentA, CF.accentB],
-          ),
-          borderRadius: BorderRadius.circular(CFRadius.xxl),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: Stack(
-          children: [
-            Positioned(
-              right: -40,
-              top: -40,
-              child: Container(
-                width: 180,
-                height: 180,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.white.withValues(alpha: 0.07),
-                ),
+      // Stack extérieur sans clip → permet à l'icône "facture x" de
+      // déborder à cheval sur la bordure haute de la carte verte.
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Container(
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [CF.accentA, CF.accentB],
               ),
+              borderRadius: BorderRadius.circular(CFRadius.xxl),
             ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(22, 22, 22, 20),
-              child: statsAsync.when(
-                loading: () => const SizedBox(
-                  height: 130,
-                  child: Center(
-                    child: CircularProgressIndicator(color: Colors.white),
-                  ),
-                ),
-                error: (e, _) => SizedBox(
-                  height: 130,
-                  child: Center(
-                    child: Text(
-                      'Erreur stats',
-                      style: GoogleFonts.inter(color: Colors.white),
+            clipBehavior: Clip.antiAlias,
+            child: Stack(
+              children: [
+                Positioned(
+                  right: -40,
+                  top: -40,
+                  child: Container(
+                    width: 180,
+                    height: 180,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.white.withValues(alpha: 0.07),
                     ),
                   ),
                 ),
-                data: (stats) => _WeeklyContent(stats: stats),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(22, 22, 22, 20),
+                  child: statsAsync.when(
+                    loading: () => const SizedBox(
+                      height: 130,
+                      child: Center(
+                        child: CircularProgressIndicator(color: Colors.white),
+                      ),
+                    ),
+                    error: (e, _) => SizedBox(
+                      height: 130,
+                      child: Center(
+                        child: Text(
+                          'Erreur stats',
+                          style: GoogleFonts.inter(color: Colors.white),
+                        ),
+                      ),
+                    ),
+                    data: (stats) => _WeeklyContent(stats: stats),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // Badge "facture x" à cheval sur la bordure haute, côté droit.
+          // Décor — non interactif, pas de sémantique d'action.
+          Positioned(
+            top: -22,
+            right: 18,
+            child: IgnorePointer(
+              child: Image.asset(
+                'assets/facture_x.webp',
+                width: 72,
+                height: 72,
+                fit: BoxFit.contain,
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -619,6 +641,8 @@ class _RecentSection extends ConsumerWidget {
                               'Session',
                       clientName:
                           projectMap[shown[i].projectId]?.clientName ?? '',
+                      clientId:
+                          projectMap[shown[i].projectId]?.project.clientId,
                     ),
                   ],
                 ],
@@ -630,70 +654,371 @@ class _RecentSection extends ConsumerWidget {
   }
 }
 
-class _RecentRow extends StatelessWidget {
+class _RecentRow extends ConsumerWidget {
   final WorkSession session;
   final String projectName;
   final String clientName;
+  final String? clientId;
 
   const _RecentRow({
     required this.session,
     required this.projectName,
     required this.clientName,
+    required this.clientId,
   });
 
   @override
-  Widget build(BuildContext context) {
-    final secs = session.workedSeconds;
-    final h = (secs ~/ 3600).toString().padLeft(2, '0');
-    final m = ((secs % 3600) ~/ 60).toString().padLeft(2, '0');
-    final s = (secs % 60).toString().padLeft(2, '0');
-    final timeStr = '$h:$m:$s';
+  Widget build(BuildContext context, WidgetRef ref) {
     final whenStr = _formatWhen(session.startedAt.toLocal());
     final label = clientName.isEmpty
         ? projectName
-        : '$projectName — $clientName';
+        : '$projectName · $clientName';
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+    return InkWell(
+      onTap: () => _openProjectDetail(context),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.inter(
+                      fontSize: CFType.body,
+                      fontWeight: FontWeight.w500,
+                      color: CF.text(context),
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    whenStr,
+                    style: GoogleFonts.inter(
+                      fontSize: 12,
+                      color: CF.faint(context),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            // CTA "Reprendre" — InkWell propre qui absorbe le tap
+            // pour ne pas déclencher la navigation projet du parent.
+            Material(
+              color: Colors.transparent,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(8),
+                onTap: () => _handleResumeTap(context, ref, label),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 10, vertical: 6),
+                  child: Text(
+                    'Reprendre',
+                    style: GoogleFonts.inter(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: CF.primary,
+                      letterSpacing: -0.1,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Tap sur la zone label/projet → navigue vers les sessions du projet.
+  void _openProjectDetail(BuildContext context) {
+    if (clientId == null) return; // pas de client lié — ignore
+    context.push('/clients/$clientId/projects/${session.projectId}/sessions');
+  }
+
+  // ── Logique tap "Reprendre" ────────────────────────────────────────────────
+  //
+  // Cas :
+  //   • Session active sur un AUTRE projet → sheet bloquant.
+  //   • Session en cours sur CE projet → sheet "Aller au chrono" (déjà ouverte).
+  //   • Session en pause sur CE projet → 2 options (reprendre / nouvelle).
+  //   • Aucune session active → 1 option (Démarrer une nouvelle session pour
+  //     ce projet) avec rappel du nom du projet.
+  void _handleResumeTap(BuildContext context, WidgetRef ref, String label) {
+    final state = ref.read(timerProvider);
+
+    if (state.isActive && state.selectedProjectId != session.projectId) {
+      _showBlockedSheet(context, state);
+      return;
+    }
+
+    _showResumeChoiceSheet(context, ref, state, label);
+  }
+
+  void _showResumeChoiceSheet(
+    BuildContext context,
+    WidgetRef ref,
+    TimerState state,
+    String label,
+  ) {
+    final isOnThis = state.selectedProjectId == session.projectId;
+    final isPausedOnThis = isOnThis && state.isPaused;
+    final isRunningOnThis = isOnThis && state.isRunning;
+
+    // Durée formatée de la session en pause (pour subtitle + libellé option).
+    String pausedTimeStr = '';
+    if (isPausedOnThis) {
+      final elapsed = state.totalWorked;
+      final hh = elapsed.inHours.toString().padLeft(2, '0');
+      final mm = (elapsed.inMinutes % 60).toString().padLeft(2, '0');
+      final ss = (elapsed.inSeconds % 60).toString().padLeft(2, '0');
+      pausedTimeStr = '$hh:$mm:$ss';
+    }
+
+    final String subtitle;
+    if (isRunningOnThis) {
+      subtitle = 'Une session est en cours sur ce projet.';
+    } else if (isPausedOnThis) {
+      subtitle = 'Une session est en pause à $pausedTimeStr.';
+    } else {
+      subtitle = 'Démarre une nouvelle session pour ce projet.';
+    }
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        decoration: BoxDecoration(
+          color: CF.surface(context),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        padding: EdgeInsets.fromLTRB(
+            0, 12, 0, MediaQuery.of(ctx).padding.bottom + 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 40,
+              height: 4,
+              margin: const EdgeInsets.only(bottom: 16),
+              decoration: BoxDecoration(
+                color: CF.border(context),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      label,
+                      style: GoogleFonts.inter(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                        color: CF.text(context),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      subtitle,
+                      style: GoogleFonts.inter(
+                        fontSize: 13,
+                        color: CF.muted(context),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 18),
+            // Branche selon l'état :
+            //   • running → CTA "Aller au chrono"
+            //   • paused  → 2 options (reprendre / nouvelle)
+            //   • idle    → CTA "Démarrer une nouvelle session"
+            if (isRunningOnThis)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      context.go('/timer');
+                    },
+                    style: FilledButton.styleFrom(
+                      backgroundColor: CF.primary,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                    icon: const Icon(LucideIcons.play, size: 18),
+                    label: Text(
+                      'Aller au chrono',
+                      style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ),
+              )
+            else if (isPausedOnThis) ...[
+              ListTile(
+                leading: Icon(LucideIcons.play, color: CF.primary, size: 22),
+                title: Text(
+                  'Reprendre la session en pause',
                   style: GoogleFonts.inter(
-                    fontSize: CFType.body,
-                    fontWeight: FontWeight.w500,
+                    fontWeight: FontWeight.w600,
                     color: CF.text(context),
                   ),
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  whenStr,
+                subtitle: Text(
+                  pausedTimeStr,
                   style: GoogleFonts.inter(
-                    fontSize: 12,
-                    color: CF.faint(context),
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                    color: CF.muted(context),
                   ),
                 ),
-              ],
+                onTap: () {
+                  Navigator.pop(ctx);
+                  context.go('/timer');
+                },
+              ),
+              ListTile(
+                leading: Icon(LucideIcons.refreshCw,
+                    color: CF.text(context), size: 22),
+                title: Text(
+                  'Démarrer une nouvelle session',
+                  style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+                ),
+                subtitle: Text(
+                  '00:00:00 · termine la session en pause',
+                  style: GoogleFonts.inter(
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                    color: CF.muted(context),
+                  ),
+                ),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  final projectId = session.projectId;
+                  // Termine la session en pause pour libérer le slot.
+                  ref.read(timerProvider.notifier).stop();
+                  ref.invalidate(sessionsByProjectProvider(projectId));
+                  ref.invalidate(projectsTotalSecondsProvider);
+                  ref.invalidate(recentSessionsProvider);
+                  ref.invalidate(weeklyStatsProvider);
+                  ref
+                      .read(timerProvider.notifier)
+                      .selectProject(projectId, projectName: label);
+                  context.go('/timer');
+                },
+              ),
+            ] else
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      final projectId = session.projectId;
+                      ref
+                          .read(timerProvider.notifier)
+                          .selectProject(projectId, projectName: label);
+                      context.go('/timer');
+                    },
+                    style: FilledButton.styleFrom(
+                      backgroundColor: CF.primary,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                    icon: const Icon(LucideIcons.play, size: 18),
+                    label: Text(
+                      'Démarrer une nouvelle session',
+                      style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showBlockedSheet(BuildContext context, TimerState state) {
+    final otherLabel = state.selectedProjectName ?? 'un autre projet';
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        decoration: BoxDecoration(
+          color: CF.surface(context),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        padding: EdgeInsets.fromLTRB(
+            0, 12, 0, MediaQuery.of(ctx).padding.bottom + 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 40,
+              height: 4,
+              margin: const EdgeInsets.only(bottom: 16),
+              decoration: BoxDecoration(
+                color: CF.border(context),
+                borderRadius: BorderRadius.circular(2),
+              ),
             ),
-          ),
-          Text(
-            timeStr,
-            style: GoogleFonts.inter(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: CF.text(context),
-              letterSpacing: 0.3,
-              fontFeatures: const [FontFeature.tabularFigures()],
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Session en cours',
+                    style: GoogleFonts.inter(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w700,
+                      color: CF.text(context),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Une session est ouverte sur $otherLabel. Termine-la ou reprends-la avant de démarrer un autre projet.',
+                    style: GoogleFonts.inter(
+                      fontSize: 13.5,
+                      color: CF.muted(context),
+                      height: 1.4,
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+            const SizedBox(height: 18),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    context.go('/timer');
+                  },
+                  style: FilledButton.styleFrom(
+                    backgroundColor: CF.primary,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
+                  child: Text(
+                    'Aller au chrono',
+                    style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

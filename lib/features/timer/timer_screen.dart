@@ -7,11 +7,14 @@ import 'package:intl/intl.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 import '../../core/models/project.dart';
+import '../../core/providers/clients_provider.dart';
 import '../../core/providers/projects_provider.dart';
 import '../../core/providers/session_bar_provider.dart';
 import '../../core/providers/sessions_provider.dart';
 import '../../core/theme/cf_palette.dart';
 import '../../core/widgets/test_mode_banner.dart';
+import '../clients/client_detail_screen.dart';
+import '../clients/no_client_prompt.dart';
 import 'timer_notifier.dart';
 
 /// Écran Chrono — refonte design ChronoFacture v2.
@@ -146,14 +149,47 @@ class _ProjectSelectorCard extends ConsumerWidget {
   });
 
   Future<void> _pickProject(BuildContext context, WidgetRef ref) async {
-    if (entries.isEmpty) return;
+    if (entries.isEmpty) {
+      final ok = await ensureClientExists(context, ref);
+      if (!ok || !context.mounted) return;
+
+      final clients = ref.read(clientsProvider).valueOrNull ?? const [];
+      if (clients.isEmpty) return;
+
+      final existingIds = entries.map((e) => e.project.id).toSet();
+      final container = ProviderScope.containerOf(context, listen: false);
+      await showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (_) =>
+            ProjectFormSheet(clientId: clients.first.id, existing: null),
+      );
+      final updated = await container.read(timerProjectsProvider.future);
+      final created = updated
+          .where((e) => !existingIds.contains(e.project.id))
+          .firstOrNull;
+      if (created != null) {
+        container.read(timerProvider.notifier).selectProject(
+              created.project.id,
+              projectName:
+                  '${created.project.name} · ${created.clientName}',
+            );
+      }
+      return;
+    }
+    final container = ProviderScope.containerOf(context, listen: false);
     final id = await context.push<String>('/projects/select');
     if (id == null) return;
-    final entry = entries.where((e) => e.project.id == id).firstOrNull;
+    final freshEntries = await container.read(timerProjectsProvider.future);
+    final entry =
+        freshEntries.where((e) => e.project.id == id).firstOrNull;
     final notifName = entry != null
         ? '${entry.project.name} · ${entry.clientName}'
         : null;
-    ref.read(timerProvider.notifier).selectProject(id, projectName: notifName);
+    container
+        .read(timerProvider.notifier)
+        .selectProject(id, projectName: notifName);
   }
 
   @override
@@ -161,22 +197,41 @@ class _ProjectSelectorCard extends ConsumerWidget {
     final hasSelection = selected != null;
     final emptyState = entries.isEmpty;
 
-    final border = hasSelection || emptyState
-        ? CF.border(context)
-        : CF.border(context);
+    // Quand un projet est sélectionné, la carte bascule en bleu plein :
+    //   • fond CF.primary, icône blanche dans un pastille translucide,
+    //   • textes blancs.
+    // Sinon, état idle classique (surface claire + bordure faint).
+    final bgColor =
+        hasSelection ? CF.primary : CF.surface(context);
+    final iconBg = hasSelection
+        ? Colors.white.withValues(alpha: 0.18)
+        : CF.surfaceAlt(context);
+    final iconColor = hasSelection ? Colors.white : CF.primary;
+    final labelColor = hasSelection
+        ? Colors.white.withValues(alpha: 0.7)
+        : CF.faint(context);
+    final titleColor = hasSelection
+        ? Colors.white
+        : (emptyState ? CF.muted(context) : CF.primary);
+    final chevronColor = hasSelection
+        ? Colors.white.withValues(alpha: 0.7)
+        : CF.faint(context);
 
     return Material(
-      color: CF.surface(context),
+      color: Colors.transparent,
       borderRadius: BorderRadius.circular(CFRadius.lg),
       child: InkWell(
         borderRadius: BorderRadius.circular(CFRadius.lg),
         onTap: enabled ? () => _pickProject(context, ref) : null,
-        child: Container(
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOut,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           decoration: BoxDecoration(
+            color: bgColor,
             borderRadius: BorderRadius.circular(CFRadius.lg),
             border: hasSelection
-                ? Border.all(color: border, width: 0.5)
+                ? null
                 : Border.all(
                     color: CF.border(context),
                     width: 1,
@@ -189,14 +244,16 @@ class _ProjectSelectorCard extends ConsumerWidget {
                 width: 36,
                 height: 36,
                 decoration: BoxDecoration(
-                  color: CF.surfaceAlt(context),
+                  color: iconBg,
                   borderRadius: BorderRadius.circular(10),
                 ),
                 alignment: Alignment.center,
+                // Outline (Lucide plus) si aucun projet, plein (Material
+                // person) quand un projet est sélectionné.
                 child: Icon(
-                  hasSelection ? LucideIcons.user : LucideIcons.plus,
-                  size: 18,
-                  color: hasSelection ? CF.chrono : CF.primary,
+                  hasSelection ? Icons.person : LucideIcons.plus,
+                  size: hasSelection ? 20 : 18,
+                  color: iconColor,
                 ),
               ),
               const SizedBox(width: 12),
@@ -211,36 +268,36 @@ class _ProjectSelectorCard extends ConsumerWidget {
                         fontSize: 10.5,
                         fontWeight: FontWeight.w600,
                         letterSpacing: 0.6,
-                        color: CF.faint(context),
+                        color: labelColor,
                       ),
                     ),
                     const SizedBox(height: 2),
                     if (hasSelection)
                       Text(
-                        '${selected!.project.name} — ${selected!.clientName}',
+                        '${selected!.project.name} · ${selected!.clientName}',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: GoogleFonts.inter(
                           fontSize: CFType.subtitle,
                           fontWeight: FontWeight.w600,
-                          color: CF.text(context),
+                          color: titleColor,
                         ),
                       )
                     else
                       Text(
                         emptyState
-                            ? 'Aucun projet — créez-en un'
+                            ? 'Aucun projet. Créez-en un.'
                             : 'Choisir un projet',
                         style: GoogleFonts.inter(
                           fontSize: CFType.subtitle,
                           fontWeight: FontWeight.w600,
-                          color: emptyState ? CF.muted(context) : CF.primary,
+                          color: titleColor,
                         ),
                       ),
                   ],
                 ),
               ),
-              Icon(LucideIcons.chevronRight, size: 18, color: CF.faint(context)),
+              Icon(LucideIcons.chevronRight, size: 18, color: chevronColor),
             ],
           ),
         ),
@@ -910,6 +967,9 @@ class _RecentProjects extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     if (entries.isEmpty) return const SizedBox.shrink();
 
+    // `select` évite de rebuild sur chaque tick du timer.
+    final selectedProjectId =
+        ref.watch(timerProvider.select((s) => s.selectedProjectId));
     final shown = entries.take(2).toList();
 
     return Padding(
@@ -947,6 +1007,7 @@ class _RecentProjects extends ConsumerWidget {
                     ),
                   _RecentRow(
                     entry: shown[i],
+                    isSelected: selectedProjectId == shown[i].project.id,
                     onTap: () {
                       ref.read(timerProvider.notifier).selectProject(
                             shown[i].project.id,
@@ -968,55 +1029,84 @@ class _RecentProjects extends ConsumerWidget {
 class _RecentRow extends StatelessWidget {
   final TimerEntry entry;
   final VoidCallback onTap;
-  const _RecentRow({required this.entry, required this.onTap});
+  final bool isSelected;
+  const _RecentRow({
+    required this.entry,
+    required this.onTap,
+    required this.isSelected,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        child: Row(
-          children: [
-            Container(
-              width: 30,
-              height: 30,
-              decoration: BoxDecoration(
-                color: CF.surfaceAlt(context),
-                borderRadius: BorderRadius.circular(8),
+    // État sélectionné : container icône en bleu plein + icône blanche
+    //   (lecture visuelle "filled" sans changer l'icône Lucide elle-même).
+    // État idle    : container gris doux + icône bleue outline.
+    final iconBg =
+        isSelected ? CF.primary : CF.surfaceAlt(context);
+    final iconColor =
+        isSelected ? Colors.white : CF.chrono;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          curve: Curves.easeOut,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          color: isSelected
+              ? CF.primary.withValues(alpha: 0.06)
+              : Colors.transparent,
+          child: Row(
+            children: [
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 160),
+                curve: Curves.easeOut,
+                width: 30,
+                height: 30,
+                decoration: BoxDecoration(
+                  color: iconBg,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                alignment: Alignment.center,
+                // Outline (Lucide) quand inactif, plein (Material) quand
+                // sélectionné — distinction visuelle franche.
+                child: Icon(
+                  isSelected ? Icons.person : LucideIcons.user,
+                  size: isSelected ? 17 : 15,
+                  color: iconColor,
+                ),
               ),
-              alignment: Alignment.center,
-              child: Icon(LucideIcons.user, size: 15, color: CF.chrono),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '${entry.project.name} — ${entry.clientName}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.inter(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                      color: CF.text(context),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${entry.project.name} · ${entry.clientName}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.inter(
+                        fontSize: 14,
+                        fontWeight:
+                            isSelected ? FontWeight.w600 : FontWeight.w500,
+                        color: CF.text(context),
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 1),
-                  Text(
-                    '${entry.project.hourlyRate.toStringAsFixed(0)} ${_symbol(entry.project.currency)} / h',
-                    style: GoogleFonts.inter(
-                      fontSize: 12,
-                      color: CF.faint(context),
+                    const SizedBox(height: 1),
+                    Text(
+                      '${entry.project.hourlyRate.toStringAsFixed(0)} ${_symbol(entry.project.currency)} / h',
+                      style: GoogleFonts.inter(
+                        fontSize: 12,
+                        color: CF.faint(context),
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-            Icon(LucideIcons.chevronRight, size: 16, color: CF.faint(context)),
-          ],
+            ],
+          ),
         ),
       ),
     );
