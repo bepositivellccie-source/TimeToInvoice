@@ -1,0 +1,14 @@
+-- Critical security fix.
+--
+-- The view project_billing_status was created without security_invoker,
+-- which means it runs with the privileges of the owner (postgres = superuser)
+-- and therefore bypasses RLS on the underlying tables.
+--
+-- Effect of the bug : any authenticated user could read every other user's
+-- projects, clients, sessions and invoices aggregates via this view. On the
+-- home screen, "Facturer X" cards from other accounts leaked across sign-ins.
+--
+-- Fix : set security_invoker = true so the view runs with the privileges of
+-- the calling user. The underlying RLS policies (auth.uid() = user_id on
+-- projects, sessions, clients, invoices) then filter rows correctly.
+ALTER VIEW public.project_billing_status SET (security_invoker = true);
