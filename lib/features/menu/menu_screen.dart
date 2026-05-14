@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../core/constants/auth_constants.dart';
 import '../../core/providers/subscription_provider.dart';
 import '../../core/providers/test_mode_provider.dart';
 import '../../core/theme/cf_palette.dart';
@@ -189,6 +191,18 @@ class MenuScreen extends ConsumerWidget {
       ),
     );
     if (confirmed == true) {
+      // Purger la session Google locale en plus de Supabase. Sans ça,
+      // la SDK Google rouvre silencieusement le dernier compte au
+      // prochain "Continuer avec Google" et l'utilisateur ne peut pas
+      // changer de compte Gmail.
+      try {
+        final googleSignIn =
+            GoogleSignIn(serverClientId: kGoogleWebClientId);
+        await googleSignIn.signOut();
+        await googleSignIn.disconnect();
+      } catch (_) {
+        // Pas de session Google active. On ignore.
+      }
       await Supabase.instance.client.auth.signOut();
     }
   }

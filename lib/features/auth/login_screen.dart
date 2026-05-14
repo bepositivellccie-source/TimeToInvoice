@@ -2,12 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../core/constants/auth_constants.dart';
 import '../../core/theme/app_colors.dart';
-
-// ── Remplace par ton Web Client ID Google Cloud Console ──────────────────────
-// APIs & Services → Credentials → OAuth 2.0 Client IDs → type "Web application"
-const _kGoogleWebClientId =
-    '387018121799-1qrhir98b9hqpi1m5196s0rdl1nc0kv3.apps.googleusercontent.com';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -54,7 +50,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       _error = null;
     });
     try {
-      final googleSignIn = GoogleSignIn(serverClientId: _kGoogleWebClientId);
+      final googleSignIn = GoogleSignIn(serverClientId: kGoogleWebClientId);
+      // Forcer le picker système : sans ce signOut(), la SDK Google
+      // réutilise silencieusement le dernier compte. L'utilisateur ne
+      // peut donc pas changer de compte Gmail. On purge le cache local
+      // pour qu'`signIn()` ouvre la liste complète.
+      try {
+        await googleSignIn.signOut();
+      } catch (_) {
+        // Pas de session locale à purger. On ignore.
+      }
       final account = await googleSignIn.signIn();
       if (account == null) {
         // Utilisateur a annulé
