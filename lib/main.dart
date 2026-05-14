@@ -5,6 +5,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'core/providers/auth_session_guard.dart';
 import 'core/providers/client_display_mode_provider.dart';
 import 'core/providers/theme_mode_provider.dart';
 import 'core/router/app_router.dart';
@@ -57,6 +58,10 @@ class ChronoFactureApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Garde-fou auth : purge les caches Riverpod liés à l'utilisateur
+    // quand le user.id change (sign-in, sign-out, switch de compte).
+    ref.watch(authSessionGuardProvider);
+
     final router = ref.watch(appRouterProvider);
     final themeMode = ref.watch(themeModeProvider);
 
