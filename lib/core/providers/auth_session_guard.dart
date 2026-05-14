@@ -45,6 +45,7 @@ final authSessionGuardProvider = Provider<void>((ref) {
     ref.invalidate(weeklyStatsProvider);
     ref.invalidate(projectsTotalSecondsProvider);
     ref.invalidate(sessionsByProjectProvider);
+    ref.invalidate(billedSessionIdsByProjectProvider);
     ref.invalidate(unbilledSessionsByProjectProvider);
 
     // ── Quotas et méta ───────────────────────────────────────────────
