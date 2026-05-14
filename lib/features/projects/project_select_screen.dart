@@ -9,6 +9,7 @@ import '../../core/providers/projects_provider.dart';
 import '../../core/providers/sessions_provider.dart';
 import '../../core/theme/cf_palette.dart';
 import '../clients/client_detail_screen.dart';
+import '../clients/no_client_prompt.dart';
 
 /// Choisir un projet — push depuis Chrono. Retourne `String?` (project id)
 /// via `context.pop(id)`. Sections "En cours" + "Terminés", recherche
@@ -68,19 +69,12 @@ class _ProjectSelectScreenState extends ConsumerState<ProjectSelectScreen> {
   }
 
   Future<void> _createProject(BuildContext context) async {
-    final clients = ref.read(clientsProvider).valueOrNull ?? [];
-    if (clients.isEmpty) {
-      ScaffoldMessenger.of(context)
-        ..clearSnackBars()
-        ..showSnackBar(
-          const SnackBar(
-            content: Text('Créez d\'abord un client.'),
-            behavior: SnackBarBehavior.floating,
-            duration: Duration(seconds: 2),
-          ),
-        );
-      return;
-    }
+    final ok = await ensureClientExists(context, ref);
+    if (!ok || !context.mounted) return;
+
+    final clients = ref.read(clientsProvider).valueOrNull ?? const [];
+    if (clients.isEmpty) return;
+
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,

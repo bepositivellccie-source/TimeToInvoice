@@ -13,6 +13,7 @@ import '../../core/providers/supabase_provider.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/project_billing_badge.dart';
 import '../clients/client_detail_screen.dart';
+import '../clients/no_client_prompt.dart';
 
 // ─── Kanban config ───────────────────────────────────────────────────────────
 
@@ -59,16 +60,15 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen>
   }
 
   Future<void> _openNewProject() async {
-    final clients = ref.read(clientsProvider).valueOrNull ?? [];
-    if (clients.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Créez d\'abord un client dans l\'onglet Clients'),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-      return;
-    }
+    // Garantit qu'au moins un client existe. Le dialogue propose d'en créer
+    // un avec une CTA actionnable si la liste est vide (l'ancienne SnackBar
+    // disparaissait sans rien laisser au tap).
+    final ok = await ensureClientExists(context, ref);
+    if (!ok || !mounted) return;
+
+    final clients = ref.read(clientsProvider).valueOrNull ?? const [];
+    if (clients.isEmpty) return;
+
     if (clients.length == 1) {
       _openForm(clients.first.id);
       return;
