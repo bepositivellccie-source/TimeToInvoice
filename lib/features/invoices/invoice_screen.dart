@@ -52,9 +52,12 @@ class _InvoiceScreenState extends ConsumerState<InvoiceScreen> {
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
-  void _initSelection(List<WorkSession> sessions) {
+  void _initSelection(List<WorkSession> sessions, Set<String> billedIds) {
     if (!_allInitialized && sessions.isNotEmpty) {
-      _selected.addAll(sessions.map((s) => s.id));
+      // Pré-cocher uniquement les sessions non encore facturées.
+      _selected.addAll(
+        sessions.where((s) => !billedIds.contains(s.id)).map((s) => s.id),
+      );
       _allInitialized = true;
     }
   }
@@ -98,7 +101,11 @@ class _InvoiceScreenState extends ConsumerState<InvoiceScreen> {
   Widget build(BuildContext context) {
     final profileAsync = ref.watch(profileProvider);
     final sessionsAsync =
-        ref.watch(unbilledSessionsByProjectProvider(widget.projectId));
+        ref.watch(sessionsByProjectProvider(widget.projectId));
+    final billedIds = ref
+            .watch(billedSessionIdsByProjectProvider(widget.projectId))
+            .valueOrNull ??
+        const <String>{};
     final project = ref
         .watch(projectsProvider)
         .valueOrNull
@@ -126,7 +133,7 @@ class _InvoiceScreenState extends ConsumerState<InvoiceScreen> {
                 data: (sessions) {
                   WidgetsBinding.instance.addPostFrameCallback((_) {
                     if (!_allInitialized && mounted) {
-                      setState(() => _initSelection(sessions));
+                      setState(() => _initSelection(sessions, billedIds));
                     }
                   });
 
@@ -143,6 +150,7 @@ class _InvoiceScreenState extends ConsumerState<InvoiceScreen> {
                         child: _StepBody(
                           step: _step,
                           sessions: sessions,
+                          billedIds: billedIds,
                           selected: _selected,
                           onToggle: (id, value) => setState(() {
                             if (value) {
@@ -227,6 +235,42 @@ class _InvoiceScreenState extends ConsumerState<InvoiceScreen> {
     }
   }
 
+  Future<bool?> _confirmReuseBilled(int count) {
+    final label = count == 1
+        ? 'Une session sélectionnée a déjà été facturée.'
+        : '$count sessions sélectionnées ont déjà été facturées.';
+    return showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: CF.surface(context),
+        title: Text(
+          'Refacturer ?',
+          style: GoogleFonts.inter(
+            fontSize: CFType.title,
+            fontWeight: FontWeight.w700,
+            color: CF.text(context),
+          ),
+        ),
+        content: Text(
+          '$label Générer une nouvelle facture quand même ?',
+          style: GoogleFonts.inter(color: CF.muted(context)),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('Annuler',
+                style: GoogleFonts.inter(color: CF.muted(context))),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: CF.primary),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Continuer'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _pickBillingDate() async {
     final now = DateTime.now();
     final picked = await showDatePicker(
@@ -253,6 +297,18 @@ class _InvoiceScreenState extends ConsumerState<InvoiceScreen> {
     String? buyerEmail,
   }) async {
     final isTest = ref.read(testModeProvider);
+
+    // Garde-fou : refacturer une session déjà liée à une facture ?
+    final billedIds = ref
+            .read(billedSessionIdsByProjectProvider(widget.projectId))
+            .valueOrNull ??
+        const <String>{};
+    final reusedCount =
+        _selected.where((id) => billedIds.contains(id)).length;
+    if (reusedCount > 0) {
+      final ok = await _confirmReuseBilled(reusedCount);
+      if (ok != true || !mounted) return;
+    }
 
     // Mode test : exclu du quota freemium (chantier 8)
     if (!kAdminMode && !isTest) {
@@ -348,6 +404,7 @@ class _InvoiceScreenState extends ConsumerState<InvoiceScreen> {
       ref.invalidate(invoicesProvider);
       ref.invalidate(unbilledSessionsByProjectProvider(widget.projectId));
       ref.invalidate(sessionsByProjectProvider(widget.projectId));
+      ref.invalidate(billedSessionIdsByProjectProvider(widget.projectId));
       ref.invalidate(projectBillingStatusProvider);
 
       // Émission immédiate aussi : créé `now` (utile pour le rappel optimistic)
@@ -508,6 +565,7 @@ class _Header extends StatelessWidget {
 class _StepBody extends StatelessWidget {
   final int step;
   final List<WorkSession> sessions;
+  final Set<String> billedIds;
   final Set<String> selected;
   final void Function(String, bool) onToggle;
   final double hourlyRate;
@@ -531,6 +589,7 @@ class _StepBody extends StatelessWidget {
   const _StepBody({
     required this.step,
     required this.sessions,
+    required this.billedIds,
     required this.selected,
     required this.onToggle,
     required this.hourlyRate,
@@ -558,6 +617,7 @@ class _StepBody extends StatelessWidget {
         0 => _Step1Sessions(
             key: const ValueKey(0),
             sessions: sessions,
+            billedIds: billedIds,
             selected: selected,
             onToggle: onToggle,
             hourlyRate: hourlyRate,
@@ -596,6 +656,7 @@ class _StepBody extends StatelessWidget {
 
 class _Step1Sessions extends StatelessWidget {
   final List<WorkSession> sessions;
+  final Set<String> billedIds;
   final Set<String> selected;
   final void Function(String, bool) onToggle;
   final double hourlyRate;
@@ -607,6 +668,7 @@ class _Step1Sessions extends StatelessWidget {
   const _Step1Sessions({
     super.key,
     required this.sessions,
+    required this.billedIds,
     required this.selected,
     required this.onToggle,
     required this.hourlyRate,
@@ -661,6 +723,7 @@ class _Step1Sessions extends StatelessWidget {
                           timeLabel: timeFmt.format(
                               sessions[i].startedAt.toLocal()),
                           selected: selected.contains(sessions[i].id),
+                          alreadyBilled: billedIds.contains(sessions[i].id),
                           onChanged: (v) =>
                               onToggle(sessions[i].id, v),
                         ),
@@ -774,6 +837,7 @@ class _SessionRow extends StatelessWidget {
   final String dateLabel;
   final String timeLabel;
   final bool selected;
+  final bool alreadyBilled;
   final ValueChanged<bool> onChanged;
 
   const _SessionRow({
@@ -782,6 +846,7 @@ class _SessionRow extends StatelessWidget {
     required this.dateLabel,
     required this.timeLabel,
     required this.selected,
+    required this.alreadyBilled,
     required this.onChanged,
   });
 
@@ -816,13 +881,23 @@ class _SessionRow extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    'Séance $index',
-                    style: GoogleFonts.inter(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      color: CF.text(context),
-                    ),
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          'Séance $index',
+                          style: GoogleFonts.inter(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            color: CF.text(context),
+                          ),
+                        ),
+                      ),
+                      if (alreadyBilled) ...[
+                        const SizedBox(width: 8),
+                        _AlreadyBilledBadge(),
+                      ],
+                    ],
                   ),
                   const SizedBox(height: 2),
                   Text(
@@ -846,6 +921,28 @@ class _SessionRow extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AlreadyBilledBadge extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: CF.paidBg,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        'Déjà facturée',
+        style: GoogleFonts.inter(
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+          color: CF.paidFg,
+          letterSpacing: 0.3,
         ),
       ),
     );
@@ -1112,63 +1209,65 @@ class _Step3Recap extends StatelessWidget {
             borderRadius: BorderRadius.circular(CFRadius.xl),
             border: Border.all(color: CF.border(context), width: 0.5),
           ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _MiniPdfThumb(),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'FACTURE',
-                          style: GoogleFonts.inter(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: CF.faint(context),
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          'En attente de numéro',
-                          style: GoogleFonts.inter(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: CF.muted(context),
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          clientName,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: GoogleFonts.inter(
-                            fontSize: 13,
-                            color: CF.muted(context),
-                          ),
-                        ),
-                        if (projectName.isNotEmpty)
+          child: IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _MiniPdfThumb(),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
                           Text(
-                            projectName,
+                            'FACTURE',
+                            style: GoogleFonts.inter(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: CF.faint(context),
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'En attente de numéro',
+                            style: GoogleFonts.inter(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: CF.muted(context),
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            clientName,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: GoogleFonts.inter(
-                              fontSize: 12,
-                              color: CF.faint(context),
+                              fontSize: 13,
+                              color: CF.muted(context),
                             ),
                           ),
-                      ],
-                    ),
-                  ],
+                          if (projectName.isNotEmpty)
+                            Text(
+                              projectName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.inter(
+                                fontSize: 12,
+                                color: CF.faint(context),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
         const SizedBox(height: 12),

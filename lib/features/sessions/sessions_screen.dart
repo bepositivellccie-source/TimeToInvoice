@@ -289,6 +289,8 @@ class _SessionsScreenState extends ConsumerState<SessionsScreen> {
                                         _highlightedId == monthSessions[i].id,
                                     hourlyRate: project?.hourlyRate ?? 0,
                                     currency: project?.currency ?? 'EUR',
+                                    onTap: () => context.push(
+                                        '/invoices/new/${widget.projectId}'),
                                     onDelete: () {
                                       setState(() => _pendingDeletes
                                           .add(monthSessions[i].id));
@@ -502,6 +504,7 @@ class _SessionTile extends StatefulWidget {
   final WorkSession session;
   final bool isHighlighted;
   final VoidCallback onDelete;
+  final VoidCallback onTap;
   final double hourlyRate;
   final String currency;
 
@@ -509,6 +512,7 @@ class _SessionTile extends StatefulWidget {
     required this.session,
     required this.isHighlighted,
     required this.onDelete,
+    required this.onTap,
     required this.hourlyRate,
     this.currency = 'EUR',
   });
@@ -581,7 +585,7 @@ class _SessionTileState extends State<_SessionTile> {
     final session = widget.session;
     final startStr = _fmtTime(session.startedAt);
     final endStr =
-        session.endedAt != null ? _fmtTime(session.endedAt!) : '—';
+        session.endedAt != null ? _fmtTime(session.endedAt!) : '-';
     final dayStr = _fmtDayFull(session.startedAt);
     final durationStr = _fmtHHMMSS(session.workedSeconds);
     final amount = (session.workedSeconds / 3600.0) * widget.hourlyRate;
@@ -663,10 +667,16 @@ class _SessionTileState extends State<_SessionTile> {
                     width: widget.isHighlighted ? 1.5 : 1,
                   ),
                 ),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 14, vertical: 12),
-                  child: Row(
+                child: Material(
+                  color: Colors.transparent,
+                  borderRadius: BorderRadius.circular(12),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: _dragOffset == 0 ? widget.onTap : null,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 12),
+                      child: Row(
                     children: [
                       // ── Contenu 2 lignes ────────────────────────
                       Expanded(
@@ -767,6 +777,8 @@ class _SessionTileState extends State<_SessionTile> {
                       const Icon(LucideIcons.chevronRight,
                           color: Color(0xFF9CA3AF), size: 16),
                     ],
+                  ),
+                ),
                   ),
                 ),
               ),

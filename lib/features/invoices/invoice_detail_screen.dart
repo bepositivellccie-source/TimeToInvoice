@@ -34,6 +34,7 @@ class InvoiceDetailScreen extends ConsumerStatefulWidget {
 class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
   bool _loadingPdf = false;
   bool _sharing = false;
+  bool _paying = false;
 
   Invoice? _resolve(WidgetRef ref) {
     final all = ref.watch(invoicesProvider).valueOrNull;
@@ -75,11 +76,17 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
   }
 
   Future<void> _share(Invoice inv) async {
+    if (_sharing) return;
+    // Idempotency : si déjà envoyée, demander confirmation avant renvoi.
+    if (inv.sentAt != null) {
+      final shouldResend = await _confirmResend(inv);
+      if (shouldResend != true || !mounted) return;
+    }
     setState(() => _sharing = true);
     try {
       final file = await _downloadPdf(inv);
       if (file == null) {
-        if (mounted) _showSnack('PDF non disponible');
+        if (mounted) _showSnack('PDF non disponible.');
         return;
       }
       final result = await Share.shareXFiles(
@@ -89,8 +96,8 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
       );
 
       if (result.status != ShareResultStatus.success) {
-        // Utilisateur a annulé ou échec — ne rien marquer en DB
-        if (mounted) _showSnack('Partage annulé');
+        // Utilisateur a annulé ou échec. Ne rien marquer en DB.
+        if (mounted) _showSnack('Partage annulé.');
         return;
       }
 
@@ -101,7 +108,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
               to: inv.clientEmail,
             );
       }
-      if (mounted) _showSnack('Facture envoyée', success: true);
+      if (mounted) _showSnack('Facture envoyée.', success: true);
     } catch (e) {
       if (mounted) _showSnack('Erreur : $e');
     } finally {
@@ -109,12 +116,60 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
     }
   }
 
+  Future<bool?> _confirmResend(Invoice inv) {
+    final dt = inv.sentAt!.toLocal();
+    final fmt = DateFormat('d MMM yyyy à HH:mm', 'fr_FR');
+    final via = switch (inv.sentVia) {
+      'email' => ' par email',
+      'whatsapp' => ' par WhatsApp',
+      _ => '',
+    };
+    return showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: CF.surface(context),
+        title: Text(
+          'Déjà envoyée',
+          style: GoogleFonts.inter(
+            fontSize: CFType.title,
+            fontWeight: FontWeight.w700,
+            color: CF.text(context),
+          ),
+        ),
+        content: Text(
+          'Cette facture a été envoyée$via le ${fmt.format(dt)}. La renvoyer ?',
+          style: GoogleFonts.inter(color: CF.muted(context)),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('Annuler',
+                style: GoogleFonts.inter(color: CF.muted(context))),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: CF.primary),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Renvoyer'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _markPaid(Invoice inv) async {
+    if (_paying) return;
+    if (inv.status == 'paid') {
+      _showSnack('Déjà encaissée.');
+      return;
+    }
+    setState(() => _paying = true);
     try {
       await ref.read(invoicesProvider.notifier).updateStatus(inv.id, 'paid');
-      if (mounted) _showSnack('Facture encaissée', success: true);
+      if (mounted) _showSnack('Facture encaissée.', success: true);
     } catch (e) {
       if (mounted) _showSnack('Erreur : $e');
+    } finally {
+      if (mounted) setState(() => _paying = false);
     }
   }
 
@@ -225,6 +280,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
                 isPaid: isPaid,
                 loadingPdf: _loadingPdf,
                 sharing: _sharing,
+                paying: _paying,
                 onShare: () => _share(inv),
                 onView: () => _viewPdf(inv),
                 onPay: () => _markPaid(inv),
@@ -612,6 +668,7 @@ class _StickyActions extends StatelessWidget {
   final bool isPaid;
   final bool loadingPdf;
   final bool sharing;
+  final bool paying;
   final VoidCallback onShare;
   final VoidCallback onView;
   final VoidCallback onPay;
@@ -621,6 +678,7 @@ class _StickyActions extends StatelessWidget {
     required this.isPaid,
     required this.loadingPdf,
     required this.sharing,
+    required this.paying,
     required this.onShare,
     required this.onView,
     required this.onPay,
@@ -663,7 +721,8 @@ class _StickyActions extends StatelessWidget {
                 label: 'Encaisser',
                 color: CF.accentB,
                 icon: LucideIcons.checkCircle,
-                onTap: onPay,
+                loading: paying,
+                onTap: paying ? null : onPay,
               ),
             ),
         ],
@@ -676,6 +735,7 @@ class _PrimaryButton extends StatelessWidget {
   final String label;
   final Color color;
   final IconData icon;
+  final bool loading;
   final VoidCallback? onTap;
 
   const _PrimaryButton({
@@ -683,12 +743,13 @@ class _PrimaryButton extends StatelessWidget {
     required this.color,
     required this.icon,
     required this.onTap,
+    this.loading = false,
   });
 
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: color,
+      color: onTap == null ? color.withValues(alpha: 0.55) : color,
       borderRadius: BorderRadius.circular(CFRadius.md),
       child: InkWell(
         onTap: onTap,
@@ -699,7 +760,17 @@ class _PrimaryButton extends StatelessWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon, size: 18, color: Colors.white),
+              if (loading)
+                const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                )
+              else
+                Icon(icon, size: 18, color: Colors.white),
               const SizedBox(width: 8),
               Flexible(
                 child: Text(

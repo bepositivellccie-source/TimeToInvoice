@@ -23,6 +23,37 @@ final sessionsByProjectProvider =
   }
 });
 
+/// IDs des sessions déjà liées à une facture pour ce projet.
+/// Utilisé par le wizard pour afficher un badge "Déjà facturée".
+final billedSessionIdsByProjectProvider =
+    FutureProvider.family<Set<String>, String>((ref, projectId) async {
+  final supabase = ref.watch(supabaseClientProvider);
+  try {
+    // 1) Toutes les sessions terminées du projet (pour limiter la jointure)
+    final sessionsData = await supabase
+        .from('sessions')
+        .select('id')
+        .eq('project_id', projectId)
+        .not('ended_at', 'is', null);
+    final ids = (sessionsData as List)
+        .map((e) => e['id'] as String)
+        .toList();
+    if (ids.isEmpty) return <String>{};
+
+    // 2) IDs des sessions déjà facturées (via table de liaison)
+    final billedData = await supabase
+        .from('invoice_sessions')
+        .select('session_id')
+        .inFilter('session_id', ids);
+    return <String>{
+      for (final row in (billedData as List)) row['session_id'] as String,
+    };
+  } on PostgrestException catch (e) {
+    if (e.code == 'PGRST116') return <String>{};
+    rethrow;
+  }
+});
+
 /// Sessions NON facturées pour un projet — exclut celles déjà liées via invoice_sessions.
 /// Utilisé par InvoiceScreen pour éviter la double facturation.
 final unbilledSessionsByProjectProvider =

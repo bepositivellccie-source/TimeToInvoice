@@ -28,6 +28,7 @@ class PdfViewerScreen extends ConsumerStatefulWidget {
 
 class _PdfViewerScreenState extends ConsumerState<PdfViewerScreen> {
   bool _sharing = false;
+  bool _paying = false;
 
   Invoice _current() {
     final all = ref.watch(invoicesProvider).valueOrNull;
@@ -36,6 +37,12 @@ class _PdfViewerScreenState extends ConsumerState<PdfViewerScreen> {
   }
 
   Future<void> _share(Invoice inv) async {
+    if (_sharing) return;
+    // Idempotency : si déjà envoyée, demander confirmation avant renvoi.
+    if (inv.sentAt != null) {
+      final shouldResend = await _confirmResend(inv);
+      if (shouldResend != true || !mounted) return;
+    }
     setState(() => _sharing = true);
     try {
       final result = await Share.shareXFiles(
@@ -45,8 +52,8 @@ class _PdfViewerScreenState extends ConsumerState<PdfViewerScreen> {
       );
 
       if (result.status != ShareResultStatus.success) {
-        // Utilisateur a annulé ou échec — ne rien marquer en DB
-        if (mounted) _showSnack('Partage annulé');
+        // Utilisateur a annulé ou échec. Ne rien marquer en DB.
+        if (mounted) _showSnack('Partage annulé.');
         return;
       }
 
@@ -54,7 +61,7 @@ class _PdfViewerScreenState extends ConsumerState<PdfViewerScreen> {
             inv.invoiceNumber,
             via: 'shared',
           );
-      if (mounted) _showSnack('Facture envoyée', success: true);
+      if (mounted) _showSnack('Facture envoyée.', success: true);
     } catch (e) {
       if (mounted) _showSnack('Erreur : $e');
     } finally {
@@ -62,12 +69,60 @@ class _PdfViewerScreenState extends ConsumerState<PdfViewerScreen> {
     }
   }
 
+  Future<bool?> _confirmResend(Invoice inv) {
+    final dt = inv.sentAt!.toLocal();
+    final fmt = DateFormat('d MMM yyyy à HH:mm', 'fr_FR');
+    final via = switch (inv.sentVia) {
+      'email' => ' par email',
+      'whatsapp' => ' par WhatsApp',
+      _ => '',
+    };
+    return showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: CF.surface(context),
+        title: Text(
+          'Déjà envoyée',
+          style: GoogleFonts.inter(
+            fontSize: CFType.title,
+            fontWeight: FontWeight.w700,
+            color: CF.text(context),
+          ),
+        ),
+        content: Text(
+          'Cette facture a été envoyée$via le ${fmt.format(dt)}. La renvoyer ?',
+          style: GoogleFonts.inter(color: CF.muted(context)),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('Annuler',
+                style: GoogleFonts.inter(color: CF.muted(context))),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: CF.primary),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Renvoyer'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _markPaid(Invoice inv) async {
+    if (_paying) return;
+    if (inv.status == 'paid') {
+      _showSnack('Déjà encaissée.');
+      return;
+    }
+    setState(() => _paying = true);
     try {
       await ref.read(invoicesProvider.notifier).updateStatus(inv.id, 'paid');
-      if (mounted) _showSnack('Facture encaissée', success: true);
+      if (mounted) _showSnack('Facture encaissée.', success: true);
     } catch (e) {
       if (mounted) _showSnack('Erreur : $e');
+    } finally {
+      if (mounted) setState(() => _paying = false);
     }
   }
 
@@ -114,6 +169,7 @@ class _PdfViewerScreenState extends ConsumerState<PdfViewerScreen> {
                 invoice: inv,
                 isPaid: isPaid,
                 sharing: _sharing,
+                paying: _paying,
                 onShare: () => _share(inv),
                 onPay: () => _markPaid(inv),
               ),
@@ -226,6 +282,7 @@ class _BottomBar extends StatelessWidget {
   final Invoice invoice;
   final bool isPaid;
   final bool sharing;
+  final bool paying;
   final VoidCallback onShare;
   final VoidCallback onPay;
 
@@ -233,6 +290,7 @@ class _BottomBar extends StatelessWidget {
     required this.invoice,
     required this.isPaid,
     required this.sharing,
+    required this.paying,
     required this.onShare,
     required this.onPay,
   });
@@ -264,7 +322,8 @@ class _BottomBar extends StatelessWidget {
                 label: 'Encaisser',
                 icon: LucideIcons.checkCircle,
                 color: CF.accentB,
-                onTap: onPay,
+                loading: paying,
+                onTap: paying ? null : onPay,
               ),
             ),
           ],
@@ -292,7 +351,7 @@ class _Btn extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: color,
+      color: onTap == null ? color.withValues(alpha: 0.55) : color,
       borderRadius: BorderRadius.circular(CFRadius.md),
       child: InkWell(
         onTap: onTap,
