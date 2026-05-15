@@ -1,17 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons/lucide_icons.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../../core/models/profile.dart';
-import '../../core/providers/profile_provider.dart';
 import '../../core/providers/theme_mode_provider.dart';
 import '../../core/theme/cf_palette.dart';
 
-/// Paramètres — push depuis Menu. Sections : Mon profil / Mon activité /
-/// Préférences / Données. Header custom avec back arrow + titre centré.
+/// Paramètres — push depuis Menu. Sections : Préférences (Mode sombre) /
+/// Données (Exporter / Supprimer compte). Header custom avec back arrow.
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
 
@@ -20,15 +16,6 @@ class SettingsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final themeMode = ref.watch(themeModeProvider);
-    final profileAsync = ref.watch(profileProvider);
-    final profile = profileAsync.valueOrNull;
-    final user = Supabase.instance.client.auth.currentUser;
-    final profileName = profile?.headerName ?? '';
-    final fullName = profileName.isNotEmpty
-        ? profileName
-        : (user?.userMetadata?['full_name'] as String? ?? user?.email ?? '');
-    final initials = _initials(fullName);
-    final subtitle = _profileSubtitle(profile);
 
     return Scaffold(
       backgroundColor: CF.bg(context),
@@ -41,115 +28,6 @@ class SettingsScreen extends ConsumerWidget {
               child: ListView(
                 padding: const EdgeInsets.only(bottom: 20),
                 children: [
-                  // ── MON PROFIL ────────────────────────────────────────
-                  const _SectionLabel('Mon profil'),
-                  _Card(
-                    child: InkWell(
-                      onTap: () => context.push('/profile'),
-                      borderRadius: BorderRadius.circular(CFRadius.md),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 14),
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 44,
-                              height: 44,
-                              decoration: const BoxDecoration(
-                                shape: BoxShape.circle,
-                                gradient: LinearGradient(
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
-                                  colors: [CF.chrono, CF.primary],
-                                ),
-                              ),
-                              alignment: Alignment.center,
-                              child: Text(
-                                initials,
-                                style: GoogleFonts.inter(
-                                  color: Colors.white,
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w700,
-                                  letterSpacing: 0.3,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 14),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    fullName.isEmpty ? 'Mon compte' : fullName,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: GoogleFonts.inter(
-                                      fontSize: CFType.subtitle,
-                                      fontWeight: FontWeight.w600,
-                                      color: CF.text(context),
-                                      letterSpacing: -0.2,
-                                    ),
-                                  ),
-                                  if (subtitle.isNotEmpty) ...[
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      subtitle,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: GoogleFonts.inter(
-                                        fontSize: 12.5,
-                                        color: CF.muted(context),
-                                        fontFeatures: const [
-                                          FontFeature.tabularFigures(),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ],
-                              ),
-                            ),
-                            Icon(LucideIcons.chevronRight,
-                                size: 16, color: CF.faint(context)),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-
-                  // ── MON ACTIVITÉ ─────────────────────────────────────
-                  const _SectionLabel('Mon activité'),
-                  _Card(
-                    child: _Row(
-                      icon: LucideIcons.mapPin,
-                      label: 'Mes coordonnées',
-                      onTap: () => context.push('/profile'),
-                    ),
-                  ),
-                  _Card(
-                    child: _Row(
-                      icon: LucideIcons.landmark,
-                      label: 'Mes coordonnées bancaires',
-                      onTap: () => context.push('/profile'),
-                    ),
-                  ),
-                  _Card(
-                    child: _Row(
-                      icon: LucideIcons.hash,
-                      label: 'Numérotation des factures',
-                      sub: 'F-{YYYY}-{NNN} · auto-incrémenté',
-                      onTap: () => _showComingSoon(context),
-                    ),
-                  ),
-                  _Card(
-                    child: _Row(
-                      icon: LucideIcons.euro,
-                      label: 'Tarif horaire par défaut',
-                      value: _hourlyRateHint(profile),
-                      onTap: () => _showComingSoon(context),
-                    ),
-                  ),
-
                   // ── PRÉFÉRENCES ───────────────────────────────────────
                   const _SectionLabel('Préférences'),
                   _Card(
@@ -162,30 +40,6 @@ class SettingsScreen extends ConsumerWidget {
                         onChanged: (m) =>
                             ref.read(themeModeProvider.notifier).setMode(m),
                       ),
-                    ),
-                  ),
-                  _Card(
-                    child: _Row(
-                      icon: LucideIcons.bell,
-                      label: 'Notifications',
-                      showChevron: false,
-                      trailing: const _Toggle(value: true, onChanged: _noop),
-                    ),
-                  ),
-                  _Card(
-                    child: _Row(
-                      icon: LucideIcons.clock,
-                      label: 'Délai de paiement par défaut',
-                      value: '30 jours',
-                      onTap: () => _showComingSoon(context),
-                    ),
-                  ),
-                  _Card(
-                    child: _Row(
-                      icon: LucideIcons.globe,
-                      label: 'Langue',
-                      value: 'Français',
-                      onTap: () => _showComingSoon(context),
                     ),
                   ),
 
@@ -220,14 +74,30 @@ class SettingsScreen extends ConsumerWidget {
                             color: CF.muted(context),
                           ),
                         ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Mentions légales · Politique de confidentialité',
-                          textAlign: TextAlign.center,
-                          style: GoogleFonts.inter(
-                            fontSize: 11,
-                            color: CF.faint(context),
-                          ),
+                        const SizedBox(height: 6),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            _FooterLink(
+                              label: 'Mentions légales',
+                              onTap: () => _showComingSoon(context),
+                            ),
+                            Padding(
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 6),
+                              child: Text(
+                                '·',
+                                style: GoogleFonts.inter(
+                                  fontSize: 11,
+                                  color: CF.faint(context),
+                                ),
+                              ),
+                            ),
+                            _FooterLink(
+                              label: 'Politique de confidentialité',
+                              onTap: () => _showComingSoon(context),
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -275,38 +145,6 @@ class SettingsScreen extends ConsumerWidget {
         ),
       );
   }
-
-  static String _initials(String name) {
-    if (name.isEmpty) return '?';
-    final parts = name.trim().split(RegExp(r'\s+'));
-    if (parts.length == 1) return parts.first.characters.first.toUpperCase();
-    return (parts.first.characters.first + parts.last.characters.first)
-        .toUpperCase();
-  }
-
-  static String _profileSubtitle(Profile? profile) {
-    if (profile == null) return '';
-    final siret = profile.siret?.trim();
-    if (siret == null || siret.isEmpty) return '';
-    final masked = _formatSiret(siret);
-    return 'Micro-entrepreneur · SIRET $masked';
-  }
-
-  static String _formatSiret(String s) {
-    final digits = s.replaceAll(RegExp(r'\D'), '');
-    if (digits.length < 9) return s;
-    final head = digits.substring(0, 9);
-    return '${head.substring(0, 3)} ${head.substring(3, 6)} ${head.substring(6, 9)}';
-  }
-
-  static String _hourlyRateHint(Profile? profile) {
-    final rate = profile?.defaultHourlyRate;
-    if (rate == null || rate <= 0) return '—';
-    final fmt = rate % 1 == 0 ? rate.toInt().toString() : rate.toStringAsFixed(0);
-    return '$fmt €/h';
-  }
-
-  static void _noop(bool _) {}
 }
 
 // ─── Header ─────────────────────────────────────────────────────────────────
@@ -409,8 +247,6 @@ class _Card extends StatelessWidget {
 class _Row extends StatelessWidget {
   final IconData icon;
   final String label;
-  final String? sub;
-  final String? value;
   final Widget? trailing;
   final VoidCallback? onTap;
   final bool showChevron;
@@ -419,8 +255,6 @@ class _Row extends StatelessWidget {
   const _Row({
     required this.icon,
     required this.label,
-    this.sub,
-    this.value,
     this.trailing,
     this.onTap,
     this.showChevron = true,
@@ -449,49 +283,18 @@ class _Row extends StatelessWidget {
           ),
           const SizedBox(width: 14),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.inter(
-                    fontSize: CFType.subtitle,
-                    fontWeight: FontWeight.w500,
-                    color: labelColor,
-                    letterSpacing: -0.1,
-                  ),
-                ),
-                if (sub != null) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    sub!,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.inter(
-                      fontSize: 12.5,
-                      color: CF.muted(context),
-                      fontFeatures: const [FontFeature.tabularFigures()],
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-          if (value != null) ...[
-            const SizedBox(width: 8),
-            Text(
-              value!,
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: GoogleFonts.inter(
-                fontSize: 14,
+                fontSize: CFType.subtitle,
                 fontWeight: FontWeight.w500,
-                color: CF.muted(context),
+                color: labelColor,
                 letterSpacing: -0.1,
               ),
             ),
-          ],
+          ),
           if (trailing != null) ...[
             const SizedBox(width: 8),
             trailing!,
@@ -574,47 +377,28 @@ class _ThemeSegmented extends StatelessWidget {
   }
 }
 
-// ─── Toggle ─────────────────────────────────────────────────────────────────
+// ─── Footer link ───────────────────────────────────────────────────────────
 
-class _Toggle extends StatelessWidget {
-  final bool value;
-  final ValueChanged<bool> onChanged;
+class _FooterLink extends StatelessWidget {
+  final String label;
+  final VoidCallback onTap;
 
-  const _Toggle({required this.value, required this.onChanged});
+  const _FooterLink({required this.label, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () => onChanged(!value),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        width: 42,
-        height: 26,
-        decoration: BoxDecoration(
-          color: value ? CF.accentB : CF.border(context),
-          borderRadius: BorderRadius.circular(13),
-        ),
-        child: AnimatedAlign(
-          duration: const Duration(milliseconds: 180),
-          curve: Curves.easeOut,
-          alignment: value ? Alignment.centerRight : Alignment.centerLeft,
-          child: Padding(
-            padding: const EdgeInsets.all(2),
-            child: Container(
-              width: 22,
-              height: 22,
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: Color(0x26000000),
-                    blurRadius: 3,
-                    offset: Offset(0, 1),
-                  ),
-                ],
-              ),
-            ),
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(4),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+        child: Text(
+          label,
+          style: GoogleFonts.inter(
+            fontSize: 11,
+            color: CF.faint(context),
+            decoration: TextDecoration.underline,
+            decorationColor: CF.faint(context).withValues(alpha: 0.4),
           ),
         ),
       ),
