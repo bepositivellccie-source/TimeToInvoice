@@ -8,7 +8,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/constants/auth_constants.dart';
 import '../../core/providers/subscription_provider.dart';
-import '../../core/providers/test_mode_provider.dart';
 import '../../core/theme/cf_palette.dart';
 
 /// Menu — 4e onglet. Hub des données, outils et compte utilisateur.
@@ -23,7 +22,6 @@ class MenuScreen extends ConsumerWidget {
     final fullName =
         user?.userMetadata?['full_name'] as String? ?? user?.email ?? '';
     final initials = _initials(fullName);
-    final testModeOn = ref.watch(testModeProvider);
     final isPro = ref.watch(subscriptionProvider).isPro;
 
     return Scaffold(
@@ -83,17 +81,6 @@ class MenuScreen extends ConsumerWidget {
             // ── OUTILS ───────────────────────────────────────────
             const _SectionLabel('Outils'),
             _MenuCard(children: [
-              _MenuRow(
-                icon: LucideIcons.flaskConical,
-                label: 'Mode test',
-                trailing: _Toggle(
-                  value: testModeOn,
-                  onChanged: (v) =>
-                      ref.read(testModeProvider.notifier).setEnabled(v),
-                ),
-                showChevron: false,
-              ),
-              _Divider(),
               _MenuRow(
                 icon: LucideIcons.download,
                 label: 'Export comptable',
@@ -385,14 +372,12 @@ class _MenuRow extends StatelessWidget {
   final String label;
   final VoidCallback? onTap;
   final Widget? trailing;
-  final bool showChevron;
 
   const _MenuRow({
     required this.icon,
     required this.label,
     this.onTap,
     this.trailing,
-    this.showChevron = true,
   });
 
   @override
@@ -425,65 +410,16 @@ class _MenuRow extends StatelessWidget {
           ),
           if (trailing != null) ...[
             trailing!,
-            if (showChevron) const SizedBox(width: 8),
+            const SizedBox(width: 8),
           ],
-          if (showChevron)
-            Icon(LucideIcons.chevronRight,
-                size: 18, color: CF.faint(context)),
+          Icon(LucideIcons.chevronRight,
+              size: 18, color: CF.faint(context)),
         ],
       ),
     );
 
     if (onTap == null) return content;
     return InkWell(onTap: onTap, child: content);
-  }
-}
-
-// ─── Toggle ─────────────────────────────────────────────────────────────────
-
-class _Toggle extends StatelessWidget {
-  final bool value;
-  final ValueChanged<bool> onChanged;
-
-  const _Toggle({required this.value, required this.onChanged});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () => onChanged(!value),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        width: 42,
-        height: 26,
-        decoration: BoxDecoration(
-          color: value ? CF.accentB : CF.border(context),
-          borderRadius: BorderRadius.circular(13),
-        ),
-        child: AnimatedAlign(
-          duration: const Duration(milliseconds: 180),
-          curve: Curves.easeOut,
-          alignment: value ? Alignment.centerRight : Alignment.centerLeft,
-          child: Padding(
-            padding: const EdgeInsets.all(2),
-            child: Container(
-              width: 22,
-              height: 22,
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: Color(0x26000000),
-                    blurRadius: 3,
-                    offset: Offset(0, 1),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
   }
 }
 
